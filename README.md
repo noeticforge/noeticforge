@@ -3,6 +3,9 @@
 开源、Agent 优先、治理强的**桌面端 AI Agent 壳**。技术栈：**TypeScript + Node.js + Electron**。
 愿景与路线图见 [`docs/DEVELOPMENT_PLAN.md`](docs/DEVELOPMENT_PLAN.md)；[贡献指南](CONTRIBUTING.md)。
 
+> 项目归属 [noeticforge](https://github.com/noeticforge) 组织 · 维护者 [@Ljj041120](https://github.com/Ljj041120) ·
+> 维护轮次报告见 [`docs/CODE_REVIEW.md`](docs/CODE_REVIEW.md)
+
 ## 你拿到的是什么
 
 ```
@@ -33,8 +36,9 @@ plugins/user/                 用户插件安装位置        plugins/settings/ 
 sdk/                          @agent-base/sdk：插件作者的类型与 definePlugin
 templates/plugin-basic/       插件模板（5 分钟出第一个插件）
 registry/                     插件注册表（PR 投稿 + sha256 校验）
+tests/                        vitest 单元测试（循环裁剪/Schema/注册表/会话存储/Provider 流解析…）
 scripts/                      smoke / ipc-selftest / mock-mcp-server / live-check
-docs/                         协议文档 + 交付文档 + 开发规划
+docs/                         协议文档 + 交付文档 + 开发规划 + 代码审查报告
 ```
 
 ## 快速开始
@@ -44,8 +48,9 @@ npm install        # 国内网络：先 set ELECTRON_MIRROR=https://npmmirror.co
 npm run build
 
 npm run smoke        # 循环链路冒烟（无需 API Key）
-npm run test:ipc     # IPC 协议自测（无需 API Key / GUI，含 MCP mock 全链路）
-npm run test:window  # 窗口控制自测（最小化/最大化/关闭 + win:state 推送）
+npm run test:unit    # vitest 单元测试（核心纯逻辑，无需 API Key）
+npm run test:ipc     # IPC 协议自测 89 项（无需 API Key / GUI，含 MCP mock 全链路）
+npm run test:window  # 窗口控制自测（无需 API Key；需要桌面环境）
 npm run check:codes  # 错误码三方一致性校验
 
 npm run electron     # 桌面应用

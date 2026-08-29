@@ -11,13 +11,14 @@ npm run build
 npm run electron                     # 桌面应用（UI 里配置模型即可对话）
 ```
 
-## 二、四条测试防线（改代码必跑，CI 会卡）
+## 二、五条测试防线（改代码必跑，CI 会卡）
 
 | 命令 | 测什么 | 需要 |
 |---|---|---|
 | `npm run smoke` | 循环引擎 + providers 多模态转换 + 严格网关兼容 + 终端后端 | 无（离线） |
-| `npm run test:ipc` | IPC 协议 87 项（含权限模式/排队/压缩/子代理/MCP/通道接线完整性） | 无（离线） |
-| `npm run test:window` | 窗口控制（最小化/最大化/关闭/状态推送） | 无（离线） |
+| `npm run test:unit` | vitest 单元测试 49 项（上下文裁剪/Schema/注册表/会话存储/Provider 流解析） | 无（离线） |
+| `npm run test:ipc` | IPC 协议 89 项（含权限模式/排队/压缩/子代理/MCP/通道接线完整性） | 无（离线） |
+| `npm run test:window` | 窗口控制（最小化/最大化/关闭/状态推送） | 桌面环境（**CI 不跑此防线**，必须本地验证） |
 | `npm run check:codes` | 错误码三方一致（事实源=协议文档=UI 文案） | 无（离线） |
 
 **用户视角端到端**（模拟真实模型 + 驱动真实 UI，15 段旅程覆盖全部功能）：
@@ -55,6 +56,8 @@ src/providers/registry.ts（模型注册表）    src/mcp/manager.ts（MCP 桥�
 
 - **沙箱**：声明式信任 + 审批 + MCP stdio 进程隔离；`preview-file`/`read-attachment`/`@` 可读任意绝对路径（信任渲染进程）。插件受控执行 API 在 Roadmap
 - **终端**：非 PTY——交互式全屏程序（vim/top）不支持
+- **win32 窗口最大化**：透明无边框窗口原生 `maximize()` 失效，底座在 win32 用逻辑最大化（`setBounds(工作区)` + 手工维护状态，`win:state` 推送语义不变）。Win+方向键等系统级窗口操作与逻辑状态可能短暂不同步（见 `docs/CODE_REVIEW.md` F1）
+- **Anthropic + 推理力度**：带工具历史的请求自动不透传 thinking（API 协议限制，底座不存储 thinking 块）；首轮无工具历史时正常透传
 - **reasoning_effort**：OpenAI 兼容端点需 config.json `"enableReasoningEffort": true` 才透传（严格网关兼容）；Anthropic 恒透传 thinking
 - **打包**：`npm run dist` 产出 release/win-unpacked；应用 cwd 即数据目录（config.json/sessions/audit.log 所在）
-- **测试注意**：journeys 依赖 18099/9226 端口，重跑前杀干净旧进程（`taskkill //F //IM electron.exe` + 按端口杀）；mock 是无状态按内容路由的，改路由先想"工具结果回来后模型该怎么收尾"
+- **测试注意**：journeys 依赖 18099/9226 端口，重跑前杀干净旧进程（`taskkill //F //IM electron.exe` + 按端口杀）**并清空 `journeys/sessions/`**（遗留会话会让 J8 的会话数断言失败）；`journeys/mcp.json` 被 gitignore，新机器需自行创建（`{"mcpServers":{"mock":{"command":"node","args":["../dist/scripts/mock-mcp-server.js"],"approval":"never"}}}`，相对路径从 journeys 目录解析）；mock 是无状态按内容路由的，改路由先想"工具结果回来后模型该怎么收尾"

@@ -25,5 +25,6 @@ jobs:
       - run: npm run build
       - run: npm run typecheck
       - run: npm run smoke
+      - run: npm run test:unit
       - run: npm run test:ipc
       - run: npm run check:codes

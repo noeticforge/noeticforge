@@ -2,9 +2,27 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。所有对外行为变化（IPC 通道、事件 payload、插件协议、错误码）都必须记录在此。
 
-## [未发布]
+## [未发布]（维护轮次：测试覆盖 + 代码审查，维护者 Ljj041120）
 
-### 修复（深度审查批次）
+详见 `docs/CODE_REVIEW.md`。本轮为维护性修改：只修问题、补测试，无新功能。
+
+### 修复
+- **win32 透明无边框窗口无法最大化**：Electron 对 `transparent:true` 窗口的 `maximize()` 静默失效（`test:window` 基线失败暴露）。win32 改为逻辑最大化（记录原 bounds → `setBounds(工作区)`），`win:state` 推送语义不变；非 win32 保持原生行为
+- **MCP：`mcp.json` 初始 `enabled:false` 的 server 运行中启用永不连接**：`setConfig` 把禁用占位连接误判为已存在；现在占位（closed）也走连接流程
+- **损坏的插件 zip 击穿「handler 永不 throw」契约**：`install-plugin-from-registry` 的解压异常转 `E_PLUGIN_LOAD_FAILED`；`install-plugin` 的 `stat` 竞态加守卫；manifest 非法 JSON 归类为校验失败
+- **Anthropic 推理力度（thinking）+ 工具历史第二轮必 400**：API 要求带 `tool_use` 的 assistant 消息携带 thinking 块而底座不存储 thinking；现对含工具历史的请求自动降级不透传 thinking（首轮照常）
+- 纯空白文本消息绕过非空校验直发模型；自动起标题覆盖用户手动改名；Windows 停止终端不杀子进程树（`taskkill /T /F`）
+- 版本号同源 `package.json`（CLI 横幅硬编码 v0.1.0、`APP_VERSION` 双写清除）；`get-app-info.model` 改为真实记录的当前模型（此前用 `models[0]` 猜测）
+
+### 新增
+- **vitest 单元测试层**（`npm run test:unit`，49 项）：循环上下文裁剪 / 参数 Schema / 工具注册表 / 会话存储 / 全局类型 / 错误码 / OpenAI 与 Anthropic 的消息转换与 SSE 流解析（mock fetch）
+- CI 增加 `npm run test:unit`
+
+### 测试基建说明
+- `test:window` 不在 CI（无头环境）：必须本地跑，本轮它抓到了 win32 最大化 bug
+- journeys E2E 重跑前清空 `journeys/sessions/`（遗留会话会让 J8 的会话数断言失败）；`journeys/mcp.json` 被 gitignore，新机器需自行创建（`node ../dist/scripts/mock-mcp-server.js` 相对路径可用）
+
+### 修复（v0.4 深度审查批次，历史记录）
 - **对话全挂的根因**：渲染层 send-message 发裸消息对象，而协议要求 `{ message, sessionId }` 包装——所有普通文本消息被误判 E_INVALID_MESSAGE；已修正并补端到端验证（mock OpenAI 服务器 + 真实 UI 全链路）
 - 排队的多模态消息被 JSON.stringify 成字符串（出队后图片丢失）→ 队列保存原始分片
 - deleteSession 不清队列 + runLoopTask 空会话非空断言 → 竞态下主进程崩溃风险；两侧加守卫

@@ -2,17 +2,21 @@
 
 感谢参与 agent-base！这是一份最短必要的协作纪律，请先读完再动手。
 
+> 项目归属 **noeticforge** 组织，维护者：[@Ljj041120](https://github.com/Ljj041120)。
+
 ## 环境与验证
 
 ```bash
 npm install        # 国内网络先 set ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/
 npm run build
 npm run smoke      # 循环引擎冒烟（不联网）
-npm run test:ipc   # IPC 协议自测（不联网）
+npm run test:unit  # vitest 单元测试（核心纯逻辑，不联网）
+npm run test:ipc   # IPC 协议自测 89 项（不联网）
 npm run check:codes  # 错误码三方一致性校验（文档 == 代码 == UI）
+npm run test:window  # 窗口控制自测（本地跑，需要显示器；CI 无头环境不跑）
 ```
 
-**CI 红了不许合入。** 提 PR 前请本地跑完上面四条。
+**CI 红了不许合入。** 提 PR 前请本地跑完上面前五条 + `test:window`。
 
 ## 铁律（与 README「核心设计约束」同效力）
 
