@@ -22,7 +22,7 @@
     "electron": "electron dist/src/electron/main.js"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "devDependencies": {
     "@types/adm-zip": "^0.5.8",
