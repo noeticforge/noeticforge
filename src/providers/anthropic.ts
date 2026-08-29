@@ -4,9 +4,11 @@ interface AnthropicOptions {
   apiKey: string;
   model: string;
   baseUrl?: string;
+  /** Messages API 的 max_tokens（缺省 8192） */
+  maxTokens?: number;
 }
 
-/** Anthropic 消息格式适配器（system 独立、tool_result 走 user 消息）。v0.1 非流式：全文一次性回调 onChunk。 */
+/** Anthropic 消息格式适配器（system 独立、tool_result 走 user 消息）。v0.3：SSE 流式 + 可中断。 */
 export class AnthropicProvider implements LLMProvider {
   readonly id = 'anthropic';
   private readonly baseUrl: string;
@@ -20,6 +22,7 @@ export class AnthropicProvider implements LLMProvider {
     tools: ToolDefinition[],
     chatOptions?: ChatOptions,
   ): Promise<LLMResponse> {
+    const streaming = !!chatOptions?.onChunk;
     const system = messages
       .filter((m) => m.role === 'system')
       .map((m) => m.content)
@@ -31,7 +34,7 @@ export class AnthropicProvider implements LLMProvider {
 
     const body: Record<string, unknown> = {
       model: this.opts.model,
-      max_tokens: 8192,
+      max_tokens: this.opts.maxTokens ?? 8192,
       messages: apiMessages,
     };
     if (system) body.system = system;
@@ -42,6 +45,7 @@ export class AnthropicProvider implements LLMProvider {
         input_schema: t.parameters,
       }));
     }
+    if (streaming) body.stream = true;
 
     const res = await fetch(`${this.baseUrl}/v1/messages`, {
       method: 'POST',
@@ -59,33 +63,135 @@ export class AnthropicProvider implements LLMProvider {
       throw new Error(`[anthropic] API 请求失败 ${res.status}: ${text.slice(0, 500)}`);
     }
 
-    const data = (await res.json()) as any;
-    const blocks: any[] = data.content ?? [];
-    const content = blocks
-      .filter((b) => b.type === 'text')
-      .map((b) => b.text)
-      .join('');
-    const toolCalls = blocks
-      .filter((b) => b.type === 'tool_use')
-      .map((b) => ({
-        id: String(b.id ?? ''),
-        name: String(b.name ?? ''),
-        arguments: (b.input as Record<string, unknown>) ?? {},
-      }));
-
-    // 非流式：全文一次性作为"流"的结束块回调
-    if (content) {
-      chatOptions?.onChunk?.(content);
+    if (streaming && res.body) {
+      return consumeSseStream(res.body, chatOptions!.onChunk!);
     }
 
-    return {
-      content,
-      toolCalls,
-      finishReason: data.stop_reason === 'tool_use' ? 'tool_calls'
-        : data.stop_reason === 'max_tokens' ? 'length'
-        : 'stop',
-    };
+    const data = (await res.json()) as any;
+    return parseMessageResponse(data, (full) => chatOptions?.onChunk?.(full));
   }
+}
+
+function parseMessageResponse(data: any, onFull?: (full: string) => void): LLMResponse {
+  const blocks: any[] = data.content ?? [];
+  const content = blocks
+    .filter((b) => b.type === 'text')
+    .map((b) => b.text)
+    .join('');
+  const toolCalls = blocks
+    .filter((b) => b.type === 'tool_use')
+    .map((b) => ({
+      id: String(b.id ?? ''),
+      name: String(b.name ?? ''),
+      arguments: (b.input as Record<string, unknown>) ?? {},
+    }));
+
+  // 非流式：全文一次性作为"流"的结束块回调
+  if (content) onFull?.(content);
+
+  return {
+    content,
+    toolCalls,
+    finishReason: data.stop_reason === 'tool_use' ? 'tool_calls'
+      : data.stop_reason === 'max_tokens' ? 'length'
+      : 'stop',
+  };
+}
+
+/**
+ * 消费 Anthropic SSE 流：
+ *   message_start → content_block_start(text|tool_use) → content_block_delta(text_delta|input_json_delta)*
+ *   → content_block_stop → … → message_delta(stop_reason) → message_stop
+ * text_delta 即时回调；tool_use 的 input 经 input_json_delta 分片拼接，结束时 JSON.parse。
+ */
+async function consumeSseStream(
+  body: ReadableStream<Uint8Array>,
+  onChunk: (delta: string) => void,
+): Promise<LLMResponse> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let content = '';
+  let stopReason: string | null = null;
+
+  // 按 block index 聚合：text 块与 tool_use 块交错到达
+  const blocks = new Map<number, { type: 'text' | 'tool_use'; text: string; id: string; name: string; args: string }>();
+
+  const handleEvent = (event: any): void => {
+    if (!event || typeof event !== 'object') return;
+    switch (event.type) {
+      case 'content_block_start': {
+        const b = event.content_block ?? {};
+        blocks.set(event.index ?? 0, {
+          type: b.type === 'tool_use' ? 'tool_use' : 'text',
+          text: typeof b.text === 'string' ? b.text : '',
+          id: String(b.id ?? ''),
+          name: String(b.name ?? ''),
+          args: '',
+        });
+        break;
+      }
+      case 'content_block_delta': {
+        const block = blocks.get(event.index ?? 0);
+        const delta = event.delta ?? {};
+        if (delta.type === 'text_delta' && typeof delta.text === 'string') {
+          if (block) block.text += delta.text;
+          content += delta.text;
+          onChunk(delta.text);
+        } else if (delta.type === 'input_json_delta' && typeof delta.partial_json === 'string') {
+          if (block) block.args += delta.partial_json;
+        }
+        break;
+      }
+      case 'message_delta': {
+        if (event.delta?.stop_reason) stopReason = event.delta.stop_reason;
+        break;
+      }
+      default:
+        break; // message_start / ping / content_block_stop / message_stop 无需处理
+    }
+  };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    let newlineIdx: number;
+    while ((newlineIdx = buffer.indexOf('\n')) >= 0) {
+      const line = buffer.slice(0, newlineIdx).trim();
+      buffer = buffer.slice(newlineIdx + 1);
+      if (!line.startsWith('data:')) continue;
+      const payload = line.slice(5).trim();
+      if (!payload) continue;
+
+      let event: any;
+      try {
+        event = JSON.parse(payload);
+      } catch {
+        continue; // 半截 JSON（跨 chunk 分片），等下一轮拼完
+      }
+      handleEvent(event);
+    }
+  }
+
+  const textParts: string[] = [];
+  const toolCalls: LLMResponse['toolCalls'] = [];
+  for (const block of [...blocks.entries()].sort(([a], [b]) => a - b).map(([, v]) => v)) {
+    if (block.type === 'text') {
+      if (block.text) textParts.push(block.text);
+    } else {
+      toolCalls.push({ id: block.id, name: block.name, arguments: safeParseJson(block.args) });
+    }
+  }
+
+  return {
+    content: textParts.join(''),
+    toolCalls,
+    finishReason: stopReason === 'tool_use' ? 'tool_calls'
+      : stopReason === 'max_tokens' ? 'length'
+      : 'stop',
+  };
 }
 
 /**
@@ -121,4 +227,13 @@ function toAnthropicMessages(messages: ChatMessage[]): unknown[] {
     out.push({ role: msg.role, content: msg.content });
   }
   return out;
+}
+
+function safeParseJson(raw: unknown): Record<string, unknown> {
+  if (typeof raw !== 'string') return (raw as Record<string, unknown>) ?? {};
+  try {
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
 }

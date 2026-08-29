@@ -42,14 +42,31 @@ function handle(channel: string, fn: (req: any) => unknown): void {
 }
 
 app.whenReady().then(async () => {
+  // 循环与审批
   handle('send-message', (req) => service.sendMessage(req));
   handle('approve-tool', (req) => service.approveTool(req));
   handle('reject-tool', (req) => service.rejectTool(req));
   handle('stop', () => service.stop());
+  // 插件
   handle('list-plugins', () => service.listPlugins());
   handle('install-plugin', (req) => service.installPlugin(req));
+  handle('install-plugin-from-registry', (req) => service.installPluginFromRegistry(req));
   handle('uninstall-plugin', (req) => service.uninstallPlugin(req));
+  handle('get-plugin-settings', (req) => service.getPluginSettingsInfo(req));
+  handle('set-plugin-settings', (req) => service.setPluginSettings(req));
+  // 会话
+  handle('list-sessions', () => service.listSessions());
+  handle('create-session', (req) => service.createSession(req));
+  handle('switch-session', (req) => service.switchSession(req));
+  handle('rename-session', (req) => service.renameSession(req));
+  handle('delete-session', (req) => service.deleteSession(req));
+  // 模型
+  handle('list-providers', () => service.listProviders());
   handle('set-model-config', (req) => service.setModelConfig(req));
+  // MCP
+  handle('list-mcp-servers', () => service.listMcpServers());
+  handle('set-mcp-config', (req) => service.setMcpConfig(req));
+  handle('toggle-mcp-server', (req) => service.toggleMcpServer(req));
 
   await service.init();
   createWindow();
@@ -66,4 +83,5 @@ app.whenReady().then(async () => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
+  void service.shutdown();
 });

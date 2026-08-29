@@ -62,6 +62,8 @@ async function main(): Promise<void> {
         systemPrompt: SYSTEM_PROMPT,
         userMessage: trimmed,
         history,
+        // config.json 可选：上下文 token 预算，超限整轮截断（只影响发给模型的内容）
+        contextTokenBudget: typeof cfg.contextTokenBudget === 'number' ? cfg.contextTokenBudget : undefined,
         options,
       });
       history.length = 0;

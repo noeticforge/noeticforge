@@ -1,14 +1,19 @@
 import type { LLMProvider } from '../types.js';
-import { OpenAICompatibleProvider } from './openai-compatible.js';
-import { AnthropicProvider } from './anthropic.js';
+import { createProviderFromRegistry, hasProvider } from './registry.js';
 
-export type ProviderId = 'deepseek' | 'openai' | 'anthropic';
+/**
+ * Provider 配置 → LLMProvider。v0.2 起实际实现委托给注册表（providers/registry.ts），
+ * 本文件保留为兼容入口与配置类型定义。接新厂商 = registerProviderFactory 一行，代码零改动。
+ */
 
 export interface ProviderConfig {
-  provider: ProviderId;
+  /** 注册表中的 provider id（openai-compatible / deepseek / openai / anthropic / 自注册） */
+  provider: string;
   apiKey?: string;
   model?: string;
   baseUrl?: string;
+  /** Anthropic Messages API 的 max_tokens（缺省 8192） */
+  maxTokens?: number;
 }
 
 /** 切换模型 = 改配置文件，代码零改动 */
@@ -16,26 +21,8 @@ export function createProvider(cfg: ProviderConfig): LLMProvider {
   if (!cfg.apiKey) {
     throw new Error(`provider "${cfg.provider}" 需要 apiKey，请在 config.json 中配置`);
   }
-  switch (cfg.provider) {
-    case 'deepseek':
-      return new OpenAICompatibleProvider({
-        id: 'deepseek',
-        baseUrl: cfg.baseUrl ?? 'https://api.deepseek.com/v1',
-        apiKey: cfg.apiKey,
-        model: cfg.model ?? 'deepseek-chat',
-      });
-    case 'openai':
-      return new OpenAICompatibleProvider({
-        id: 'openai',
-        baseUrl: cfg.baseUrl ?? 'https://api.openai.com/v1',
-        apiKey: cfg.apiKey,
-        model: cfg.model ?? 'gpt-4o-mini',
-      });
-    case 'anthropic':
-      return new AnthropicProvider({
-        apiKey: cfg.apiKey,
-        model: cfg.model ?? 'claude-sonnet-4-5',
-        baseUrl: cfg.baseUrl,
-      });
+  if (!hasProvider(cfg.provider)) {
+    throw new Error(`不支持的 provider: ${cfg.provider}，请在 config.json 中改用已注册的 provider id`);
   }
+  return createProviderFromRegistry(cfg);
 }

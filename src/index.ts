@@ -1,9 +1,15 @@
 export * from './types.js';
 export { createProvider, type ProviderConfig } from './providers/provider.js';
+export { registerProviderFactory, listProviderMetas, hasProvider, type ProviderMeta } from './providers/registry.js';
 export { MockProvider } from './providers/mock.js';
 export { OpenAICompatibleProvider } from './providers/openai-compatible.js';
 export { AnthropicProvider } from './providers/anthropic.js';
 export { ToolRegistry } from './core/registry.js';
 export { runLoop, type RunLoopInput, type RunLoopResult } from './core/loop.js';
-export { loadPluginFromDir, loadPluginsFromRoot } from './plugins/loader.js';
-export { AgentService, type IpcResult, type LoopError, type PluginInfo, type PushChannel } from './electron/agent-service.js';
+export { AgentLoopError } from './core/errors.js';
+export { trimHistory, estimateTokens, type TrimmedHistory } from './core/context.js';
+export { SessionStore, type Session, type SessionMeta } from './core/session-store.js';
+export { loadPluginFromDir, loadPluginsFromRoot, SUPPORTED_PLUGIN_PROTOCOL_VERSION } from './plugins/loader.js';
+export { McpManager, type McpServerConfig, type McpServerStatus } from './mcp/manager.js';
+export { AgentService, type IpcResult, type LoopError, type PluginInfo, type PushChannel, type SessionDTO, type SessionMetaDTO } from './electron/agent-service.js';
+export { ERROR_CODES, type ErrorCode } from './shared/error-codes.js';

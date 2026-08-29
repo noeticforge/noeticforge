@@ -2,13 +2,13 @@ import { mkdtemp, cp, rm, mkdir, writeFile, readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { AgentService, type PushChannel } from '../src/electron/agent-service.js';
+import { AgentService, type PushChannel, type IpcResult } from '../src/electron/agent-service.js';
 import { MockProvider } from '../src/providers/mock.js';
 
 /**
  * IPC 自测：不用 Electron、不用网络、不用 API Key。
  * 直接驱动 AgentService（Electron main 只是它的薄转发层），
- * 按 IPC_EVENT_PROTOCOL.md 验证 15 个事件通道的完整行为。
+ * 按 IPC_EVENT_PROTOCOL.md 验证全部事件通道的完整行为。
  */
 
 interface Collected {
@@ -22,6 +22,15 @@ function check(ok: boolean, label: string): void {
     console.error('IPC 自测失败');
     process.exit(1);
   }
+}
+
+/** 断言 ok 并取出 data（自测里意外失败即终止） */
+function unwrap<T>(r: IpcResult<T>): T {
+  if (!r.ok) {
+    console.error(`❌ 意外失败: ${r.error.code} ${r.error.message}`);
+    process.exit(1);
+  }
+  return r.data;
 }
 
 async function waitFor(pred: () => boolean, timeoutMs = 5000, label = '条件'): Promise<void> {
@@ -176,6 +185,97 @@ async function main(): Promise<void> {
   check(persisted.provider === 'deepseek' && persisted.apiKey === 'sk-test-only', '配置持久化到 config.json（隔离目录）');
   const noKey = await service.setModelConfig({ config: { provider: 'openai' } });
   check(noKey.ok === false && noKey.error.code === 'E_INVALID_CONFIG', '缺少 apiKey → E_INVALID_CONFIG');
+
+  // ---------- 6. Provider 注册表（v0.2） ----------
+  const provs = service.listProviders();
+  check(
+    provs.ok && ['openai-compatible', 'deepseek', 'openai', 'anthropic'].every((id) => provs.data.providers.some((p) => p.id === id)),
+    'list-providers 返回 4 个内置 provider（含通用 openai-compatible）',
+  );
+  const noBase = await service.setModelConfig({ config: { provider: 'openai-compatible', apiKey: 'x' } });
+  check(noBase.ok === false && noBase.error.code === 'E_INVALID_CONFIG', 'openai-compatible 缺 baseUrl → E_INVALID_CONFIG');
+  const withBase = await service.setModelConfig({ config: { provider: 'openai-compatible', apiKey: 'x', baseUrl: 'http://127.0.0.1:9/v1', model: 'm' } });
+  check(withBase.ok === true, 'openai-compatible 带 baseUrl 配置成功（Ollama 等即插）');
+
+  // ---------- 7. 多会话 CRUD / 隔离 / 内置插件保护（v0.2） ----------
+  const sess0 = unwrap(service.listSessions());
+  check(sess0.sessions.length === 1 && sess0.sessions[0].messageCount === 8, 'init 自动建默认会话且已含 8 条消息（首轮对话落盘）');
+  const created = unwrap(await service.createSession({ title: '测试会话B' }));
+  check(created.session.messages.length === 0, 'create-session 建空会话');
+  const sidB = created.session.id;
+  const sw = unwrap(await service.switchSession({ id: sess0.sessions[0].id }));
+  check(sw.session.messages.length === 8, 'switch-session 返回完整历史（会话隔离，B 为空、A 为 8 条）');
+  const rn = await service.renameSession({ id: sidB, title: '改名后的B' });
+  check(rn.ok, 'rename-session 成功');
+  const renamed = unwrap(service.listSessions());
+  check(renamed.sessions.some((s) => s.id === sidB && s.title === '改名后的B'), '改名在列表中生效');
+  // 删除活跃会话 → 自动回落到剩余会话
+  const del = await service.deleteSession({ id: sidB });
+  check(del.ok, 'delete-session 成功');
+  const afterDel = unwrap(service.listSessions());
+  check(afterDel.sessions.length === 1, '删除后只剩原会话');
+
+  const builtinGuard = await service.uninstallPlugin({ name: 'read-file' });
+  check(builtinGuard.ok === false && builtinGuard.error.code === 'E_PLUGIN_BUILTIN', '卸载内置插件 → E_PLUGIN_BUILTIN');
+  check(existsSync(path.join(projectRoot, 'plugins', 'builtin', 'read-file')), '内置插件目录未被删除');
+
+  // ---------- 8. 会话进行中禁止删除（E_SESSION_IN_USE） ----------
+  const mock3 = new MockProvider([
+    { content: '', toolCalls: [{ id: 'tc_8', name: 'write-file.write', arguments: { path: 'never.txt', content: 'x' } }], finishReason: 'tool_calls' },
+  ]);
+  const service3 = new AgentService({ appDir, pushEvent: push, initialProvider: mock3 });
+  await service3.init();
+  const send3 = service3.sendMessage({ message: { role: 'user', content: 'x' } });
+  const mid3 = (send3 as { ok: true; data: { messageId: string } }).data.messageId;
+  await waitFor(() => events.some((e) => e.channel === 'approval-required' && e.payload.messageId === mid3), 5000, 'mid3 审批');
+  const active3 = unwrap(service3.listSessions()).sessions[0].id;
+  const delBusy = await service3.deleteSession({ id: active3 });
+  check(delBusy.ok === false && delBusy.error.code === 'E_SESSION_IN_USE', '会话循环进行中删除 → E_SESSION_IN_USE');
+  service3.stop();
+  await waitFor(() => events.some((e) => e.channel === 'loop-done' && e.payload.messageId === mid3), 5000, 'mid3 loop-done');
+
+  // ---------- 9. MCP 桥接（v0.3）：mock stdio server 全链路 ----------
+  await writeFile(path.join(appDir, 'mcp.json'), JSON.stringify({
+    mcpServers: {
+      mock: {
+        command: process.execPath,
+        args: [path.join(projectRoot, 'dist', 'scripts', 'mock-mcp-server.js')],
+        approval: 'never',
+      },
+    },
+  }));
+  const mock4 = new MockProvider([
+    { content: '', toolCalls: [{ id: 'mcp1', name: 'mcp.mock.echo', arguments: { text: 'hi' } }], finishReason: 'tool_calls' },
+    { content: 'mcp 完成', toolCalls: [], finishReason: 'stop' },
+  ]);
+  const service4 = new AgentService({ appDir, pushEvent: push, initialProvider: mock4 });
+  await service4.init();
+  await waitFor(
+    () => events.some((e) => e.channel === 'mcp-status-changed' && JSON.stringify(e.payload).includes('"connected"')),
+    10000,
+    'mock MCP 连接成功',
+  );
+  const mcpList = unwrap(service4.listPlugins());
+  check(
+    mcpList.plugins.some((p) => p.name === 'mcp-mock' && p.tools.includes('mcp.mock.echo')),
+    'MCP server 工具桥接进注册表（mcp.mock.echo）',
+  );
+  const send4 = service4.sendMessage({ message: { role: 'user', content: '调 echo' } });
+  const mid4 = (send4 as { ok: true; data: { messageId: string } }).data.messageId;
+  await waitFor(() => events.some((e) => e.channel === 'tool-result' && e.payload.toolCallId === 'mcp1'), 8000, 'mcp1 结果');
+  const mcpResult = events.find((e) => e.channel === 'tool-result' && e.payload.toolCallId === 'mcp1')!;
+  check(mcpResult.payload.result.ok === true && mcpResult.payload.result.output.includes('echo: hi'), 'MCP 工具经 stdio 子进程真实执行');
+  await waitFor(() => events.some((e) => e.channel === 'loop-done' && e.payload.messageId === mid4), 8000, 'mid4 loop-done');
+
+  const off = await service4.toggleMcpServer({ name: 'mock', enabled: false });
+  check(off.ok === true, 'toggle-mcp-server(false) 成功');
+  const mcpOff = unwrap(service4.listPlugins());
+  check(!mcpOff.plugins.some((p) => p.name === 'mcp-mock'), '禁用后 MCP 工具从注册表移除');
+  const badCfg = await service4.setMcpConfig({ config: { broken: {} as any } });
+  check(badCfg.ok === false && badCfg.error.code === 'E_INVALID_CONFIG', '缺 command/url 的 MCP 配置 → E_INVALID_CONFIG');
+  const unknownToggle = await service4.toggleMcpServer({ name: 'nope', enabled: true });
+  check(unknownToggle.ok === false && unknownToggle.error.code === 'E_MCP_NOT_FOUND', 'toggle 不存在的 MCP server → E_MCP_NOT_FOUND');
+  await service4.shutdown();
 
   await rm(appDir, { recursive: true, force: true });
   console.log('\nIPC 自测全部通过 🎉');

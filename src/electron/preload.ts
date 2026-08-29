@@ -7,14 +7,31 @@ import { contextBridge, ipcRenderer } from 'electron';
  */
 
 const INVOKE_CHANNELS = [
+  // 循环与审批
   'send-message',
   'approve-tool',
   'reject-tool',
   'stop',
+  // 插件
   'list-plugins',
   'install-plugin',
+  'install-plugin-from-registry',
   'uninstall-plugin',
+  'get-plugin-settings',
+  'set-plugin-settings',
+  // 会话（v0.2）
+  'list-sessions',
+  'create-session',
+  'switch-session',
+  'rename-session',
+  'delete-session',
+  // 模型（v0.2）
+  'list-providers',
   'set-model-config',
+  // MCP（v0.3）
+  'list-mcp-servers',
+  'set-mcp-config',
+  'toggle-mcp-server',
 ] as const;
 
 const PUSH_CHANNELS = [
@@ -25,6 +42,8 @@ const PUSH_CHANNELS = [
   'loop-done',
   'loop-error',
   'plugins-changed',
+  'sessions-changed',
+  'mcp-status-changed',
 ] as const;
 
 type InvokeChannel = (typeof INVOKE_CHANNELS)[number];
@@ -39,25 +58,51 @@ function on(channel: PushChannel, callback: (payload: unknown) => void): void {
 }
 
 const agentBase = {
-  // ---- 请求（UI → 主进程，返回 {ok:true,data} | {ok:false,error}）----
-  sendMessage: (message: { role: 'user'; content: string }) =>
-    invoke<{ messageId: string } | { ok: false; error: unknown }>('send-message', { message }),
+  /** 协议版本（UI 启动时校验与底座是否匹配） */
+  protocolVersion: 2,
+
+  // ---- 循环与审批（请求返回 {ok:true,data} | {ok:false,error:{code,message,phase}}）----
+  sendMessage: (req: { message: { role: 'user'; content: string }; sessionId?: string }) =>
+    invoke<{ messageId: string } | { ok: false; error: unknown }>('send-message', req),
   approveTool: (req: { messageId: string; toolCallId: string; arguments?: Record<string, unknown> }) =>
     invoke('approve-tool', req),
   rejectTool: (req: { messageId: string; toolCallId: string; reason?: string }) =>
     invoke('reject-tool', req),
   stop: () => invoke('stop'),
+
+  // ---- 插件 ----
   listPlugins: () => invoke('list-plugins'),
   installPlugin: (req: { pluginDir: string }) => invoke('install-plugin', req),
+  installPluginFromRegistry: (req: { name: string; registryUrl?: string }) =>
+    invoke('install-plugin-from-registry', req),
   uninstallPlugin: (req: { name: string }) => invoke('uninstall-plugin', req),
+  getPluginSettings: (req: { name: string }) => invoke('get-plugin-settings', req),
+  setPluginSettings: (req: { name: string; values: Record<string, unknown> }) =>
+    invoke('set-plugin-settings', req),
+
+  // ---- 会话 ----
+  listSessions: () => invoke('list-sessions'),
+  createSession: (req: { title?: string }) => invoke('create-session', req),
+  switchSession: (req: { id: string }) => invoke('switch-session', req),
+  renameSession: (req: { id: string; title: string }) => invoke('rename-session', req),
+  deleteSession: (req: { id: string }) => invoke('delete-session', req),
+
+  // ---- 模型 ----
+  listProviders: () => invoke('list-providers'),
   setModelConfig: (req: {
     config: {
-      provider: 'deepseek' | 'openai' | 'anthropic';
+      provider: string;
       apiKey?: string;
       baseUrl?: string;
       model?: string;
+      maxTokens?: number;
     };
   }) => invoke('set-model-config', req),
+
+  // ---- MCP ----
+  listMcpServers: () => invoke('list-mcp-servers'),
+  setMcpConfig: (req: { config: Record<string, unknown> }) => invoke('set-mcp-config', req),
+  toggleMcpServer: (req: { name: string; enabled: boolean }) => invoke('toggle-mcp-server', req),
 
   // ---- 订阅（主进程 → UI 推送）----
   on,

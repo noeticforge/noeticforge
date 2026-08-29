@@ -7,6 +7,9 @@ import type { ToolRegistry } from '../core/registry.js';
 
 const VALID_PERMISSIONS: Permission[] = ['fs:read', 'fs:write', 'shell:exec', 'net:http'];
 
+/** 底座支持的插件协议版本；manifest.protocolVersion 高于此值 → 拒绝加载 */
+export const SUPPORTED_PLUGIN_PROTOCOL_VERSION = 1;
+
 export interface LoadPluginsReport {
   loaded: string[];
   failed: { dir: string; error: string }[];
@@ -76,6 +79,9 @@ export async function loadPluginFromDir(pluginDir: string): Promise<Plugin> {
   }
 
   const plugin: Plugin = { manifest, tools: exported.tools };
+  // 富插件协议 v2：生命周期钩子（可选）
+  if (typeof exported.onInstall === 'function') plugin.onInstall = exported.onInstall;
+  if (typeof exported.onUninstall === 'function') plugin.onUninstall = exported.onUninstall;
   validateTools(plugin);
   return plugin;
 }
@@ -97,6 +103,19 @@ function validateManifest(raw: unknown, pluginDir: string): PluginManifest {
   if (typeof m.entry !== 'string' || !m.entry.endsWith('.js')) {
     throw new Error('entry 必须指向 .js 文件');
   }
+  if (m.protocolVersion !== undefined) {
+    if (typeof m.protocolVersion !== 'number' || !Number.isInteger(m.protocolVersion) || m.protocolVersion < 1) {
+      throw new Error('manifest.protocolVersion 必须是正整数');
+    }
+    if (m.protocolVersion > SUPPORTED_PLUGIN_PROTOCOL_VERSION) {
+      throw new Error(
+        `插件协议版本过高: manifest 要求 ${m.protocolVersion}，底座支持 ${SUPPORTED_PLUGIN_PROTOCOL_VERSION}，请升级底座`,
+      );
+    }
+  }
+  if (m.settings !== undefined && (typeof m.settings !== 'object' || m.settings === null || Array.isArray(m.settings))) {
+    throw new Error('manifest.settings 必须是 JSON Schema 对象');
+  }
   return {
     name: m.name!,
     version: m.version!,
@@ -105,6 +124,8 @@ function validateManifest(raw: unknown, pluginDir: string): PluginManifest {
     author: m.author,
     permissions: m.permissions!,
     entry: m.entry!,
+    protocolVersion: m.protocolVersion,
+    settings: m.settings,
   };
 }
 
