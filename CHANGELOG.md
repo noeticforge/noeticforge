@@ -16,7 +16,7 @@
 
 ### 新增
 - **vitest 单元测试层**（`npm run test:unit`，49 项）：循环上下文裁剪 / 参数 Schema / 工具注册表 / 会话存储 / 全局类型 / 错误码 / OpenAI 与 Anthropic 的消息转换与 SSE 流解析（mock fetch）
-- CI 增加 `npm run test:unit`；矩阵移除已 EOL 的 Node 18，`engines.node` 提到 `>=20`（vitest 4 要求 Node ≥ 20.12，否则测试层无法启动）
+- CI 增加 `npm run test:unit`；矩阵调整为 Node 22 / 24（移除已 EOL 的 18 与 20，vitest 4 要求 Node ≥ 20.12），`engines.node` 提到 `>=22`（CI 覆盖的两个版本线，22 为维护者开发机版本）
 
 ### 测试基建说明
 - `test:window` 不在 CI（无头环境）：必须本地跑，本轮它抓到了 win32 最大化 bug
