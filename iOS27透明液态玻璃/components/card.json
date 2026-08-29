@@ -1,0 +1,59 @@
+{
+  "slug": "card",
+  "schemaVersion": 2,
+  "name": "Card 玻璃卡片",
+  "category": "Containers",
+  "sourceKind": "from-scratch",
+  "confidence": "medium",
+  "semanticTypeCandidates": [
+    {
+      "candidate": "card",
+      "evidence": "Floating glass container holding grouped content; two material variants Regular (adaptive) and Clear (more transparent)."
+    }
+  ],
+  "variantDimensions": {
+    "material": ["glass Regular (adaptive tint + full light response)", "glass Clear (higher transparency, media-rich backgrounds, needs dimming)"],
+    "size": ["compact 16px radius", "default 20px radius", "hero 28px radius"],
+    "state": ["rest", "hover (lift)", "pressed (sink)"]
+  },
+  "representativeVariants": [
+    {
+      "name": "Regular glass card",
+      "whySelected": "Standard floating card — translucent white fill over backdrop blur with saturate boost, hairline border, specular top highlight",
+      "traits": {
+        "fill": "var(--surface-glass)",
+        "border": "var(--border-hairline)",
+        "radius": "var(--radius-lg)",
+        "shadow": "var(--shadow-2)",
+        "specular": "inset 0 1px 0 rgba(255,255,255,0.4)",
+        "backdrop": "blur(20px) saturate(180%)"
+      },
+      "childrenDigest": ["title", "summary line", "two action links"]
+    },
+    {
+      "name": "Clear glass card",
+      "whySelected": "More transparent variant for media-heavy content; readability relies on an internal dimming layer",
+      "traits": {
+        "fill": "var(--surface-glass-clear)",
+        "dimmer": "var(--overlay-dimmer)",
+        "border": "var(--border-hairline)",
+        "radius": "var(--radius-xl)",
+        "shadow": "var(--shadow-3)"
+      },
+      "childrenDigest": ["media placeholder", "caption"]
+    }
+  ],
+  "visualSpecs": [
+    { "sample": "regular", "text": "最近项目", "states": ["rest", "hover"] },
+    { "sample": "clear", "text": "收藏精选", "states": ["rest"] }
+  ],
+  "anatomy": ["glass surface", "hairline border", "inner specular highlight", "content padding", "optional hover elevation"],
+  "structurePatterns": ["stacked content with --space-6 padding", "corner radius-lg/xl", "hover lifts with shadow-3"],
+  "usageHints": {
+    "priorityHint": "high",
+    "glassRule": "Cards float above the wallpaper; never place a glass card on another glass layer — content areas stay non-glass"
+  },
+  "doNotInvent": ["no nested glass-on-glass", "no opaque solid cards for elevated surfaces"],
+  "unknowns": ["exact blur radius is an approximation of the native material"],
+  "keyInsightSeed": "Regular/Clear dual glass materials with hairline border and specular highlight"
+}

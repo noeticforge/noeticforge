@@ -45,6 +45,7 @@ npm run build
 
 npm run smoke        # 循环链路冒烟（无需 API Key）
 npm run test:ipc     # IPC 协议自测（无需 API Key / GUI，含 MCP mock 全链路）
+npm run test:window  # 窗口控制自测（最小化/最大化/关闭 + win:state 推送）
 npm run check:codes  # 错误码三方一致性校验
 
 npm run electron     # 桌面应用

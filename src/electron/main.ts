@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AgentService } from './agent-service.js';
+import { registerWindowControls, attachWindowStatePush } from './window-controls.js';
 
 /**
  * Electron 主进程：唯一的职责是把 ipcMain 通道接到 AgentService 上、把推送转发给窗口。
@@ -25,7 +26,13 @@ function createWindow(): void {
   win = new BrowserWindow({
     width: 1280,
     height: 860,
+    minWidth: 960,
+    minHeight: 640,
     title: 'agent-base',
+    // 液态玻璃：无边框透明窗口，UI 自绘全部窗体（圆角玻璃板 + 拖拽标题栏 + 窗控按钮）
+    frame: false,
+    transparent: true,
+    backgroundColor: '#00000000',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -34,6 +41,8 @@ function createWindow(): void {
     },
   });
   win.loadFile(path.resolve(__dirname, '../../../renderer/index.html'));
+  // 最大化状态推给渲染层：玻璃板去掉圆角与外边距，铺满屏幕
+  attachWindowStatePush(() => win);
 }
 
 /** handler 永不 throw：全部异常在 service 内部转成 {ok:false,error}（协议 §6.4） */
@@ -42,6 +51,9 @@ function handle(channel: string, fn: (req: any) => unknown): void {
 }
 
 app.whenReady().then(async () => {
+  // 窗口外壳控制（不属于 agent IPC 协议，走 ipcMain.on 单向通道）
+  registerWindowControls(() => win);
+
   // 循环与审批
   handle('send-message', (req) => service.sendMessage(req));
   handle('approve-tool', (req) => service.approveTool(req));

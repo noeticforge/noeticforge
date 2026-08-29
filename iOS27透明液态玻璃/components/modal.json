@@ -1,0 +1,56 @@
+{
+  "slug": "modal",
+  "schemaVersion": 2,
+  "name": "Modal 模态面板",
+  "category": "Overlays",
+  "sourceKind": "from-scratch",
+  "confidence": "medium",
+  "semanticTypeCandidates": [
+    {
+      "candidate": "modal",
+      "evidence": "Floating glass sheet over a dimmed backdrop — iOS27 style dialog with large radius, header, body and action row."
+    }
+  ],
+  "variantDimensions": {
+    "size": ["sheet default 480px", "alert compact 320px"],
+    "state": ["closed (refraction fade)", "open"]
+  },
+  "representativeVariants": [
+    {
+      "name": "Glass sheet",
+      "whySelected": "The full Liquid Glass sheet — heavy blur, specular highlight, large 28px radius, centered over dimmed wallpaper",
+      "traits": {
+        "fill": "var(--surface-glass)",
+        "backdrop": "var(--overlay-dimmer)",
+        "border": "var(--border-hairline)",
+        "radius": "var(--radius-xl)",
+        "shadow": "var(--shadow-4)",
+        "width": "480px"
+      },
+      "childrenDigest": ["header 新建项目", "body with two input fields", "action row 取消 / 创建"]
+    },
+    {
+      "name": "Alert",
+      "whySelected": "Compact confirm dialog with destructive action — iOS alert pattern",
+      "traits": {
+        "fill": "var(--surface-glass)",
+        "radius": "var(--radius-lg)",
+        "width": "320px"
+      },
+      "childrenDigest": ["title 删除项目?", "message", "actions 取消 / 删除"]
+    }
+  ],
+  "visualSpecs": [
+    { "sample": "sheet", "text": "新建项目", "states": ["open"] },
+    { "sample": "alert", "text": "确定删除该项目？", "states": ["open"] }
+  ],
+  "anatomy": ["dimmed backdrop (overlay-dimmer)", "glass sheet", "hairline border", "specular top highlight", "header", "body", "action row"],
+  "structurePatterns": ["backdrop covers full window", "sheet centered with shadow-4", "action row right-aligned, destructive last"],
+  "usageHints": {
+    "priorityHint": "medium",
+    "glassRule": "The sheet is the only glass in the stack; backdrop uses plain dimming, never glass-on-glass"
+  },
+  "doNotInvent": ["no corner notch patterns", "no side drawers"],
+  "unknowns": ["appearance/disappearance uses refraction animation — approximated with fade+scale in web previews"],
+  "keyInsightSeed": "Floating glass sheet over dimmed wallpaper, 28px radius"
+}

@@ -60,7 +60,6 @@ function on(channel: PushChannel, callback: (payload: unknown) => void): void {
 const agentBase = {
   /** 协议版本（UI 启动时校验与底座是否匹配） */
   protocolVersion: 2,
-
   // ---- 循环与审批（请求返回 {ok:true,data} | {ok:false,error:{code,message,phase}}）----
   sendMessage: (req: { message: { role: 'user'; content: string }; sessionId?: string }) =>
     invoke<{ messageId: string } | { ok: false; error: unknown }>('send-message', req),
@@ -109,5 +108,21 @@ const agentBase = {
 };
 
 contextBridge.exposeInMainWorld('agentBase', agentBase);
+
+/**
+ * 窗口外壳控制（液态玻璃无边框窗口专用）。
+ * 注意：这是窗口管理层，不属于 agent IPC 协议——agentBase 通道保持纯净，
+ * 窗控行为对协议无感知，任何 UI 实现都可以自行决定是否使用。
+ */
+const agentWindow = {
+  minimize: () => ipcRenderer.send('win:minimize'),
+  toggleMaximize: () => ipcRenderer.send('win:toggle-maximize'),
+  close: () => ipcRenderer.send('win:close'),
+  onState: (callback: (state: { maximized: boolean }) => void): void => {
+    ipcRenderer.on('win:state', (_event, state) => callback(state));
+  },
+};
+
+contextBridge.exposeInMainWorld('agentWindow', agentWindow);
 
 export type AgentBaseApi = typeof agentBase;

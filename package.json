@@ -10,6 +10,7 @@
     "cli": "node dist/src/cli.js",
     "smoke": "node dist/scripts/smoke.js",
     "test:ipc": "node dist/scripts/ipc-selftest.js",
+    "test:window": "electron dist/scripts/window-selftest.js",
     "check:codes": "node scripts/check-error-codes.mjs",
     "live:check": "node dist/scripts/live-check.js",
     "dist": "electron-builder",

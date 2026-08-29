@@ -3,85 +3,105 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Agent Base</title>
+<title>agent-base</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <!-- 顶部 toast 容器：所有 ok:false 的错误提示都打在这里 -->
 <div id="toast-box" aria-live="polite"></div>
 
-<!-- 主布局：左侧边栏 + 右侧聊天区 -->
-<div id="app">
-  <aside id="sidebar">
-    <!-- 会话面板（v0.2 多会话） -->
-    <section class="side-panel" id="session-panel">
-      <h2 class="panel-title">💬 会话<button id="session-new-btn" class="btn-mini">＋ 新建</button></h2>
-      <div id="session-list" class="session-list"></div>
-      <div id="session-empty" class="empty-hint hidden">暂无会话</div>
-    </section>
-    <!-- 插件管理面板 -->
-    <section class="side-panel" id="plugin-panel">
-      <h2 class="panel-title">🧩 插件与 MCP</h2>
-      <div id="plugin-list" class="plugin-list"></div>
-      <div id="plugin-empty" class="empty-hint hidden">暂无插件</div>
-      <div id="mcp-list" class="mcp-list"></div>
-      <div class="install-row">
-        <input id="plugin-dir" type="text" placeholder="插件目录绝对路径，如 D:\plugins\my-plugin">
-        <button id="install-btn">安装</button>
-      </div>
-    </section>
-    <!-- 模型配置面板 -->
-    <section class="side-panel" id="model-panel">
-      <h2 class="panel-title">⚙️ 模型配置</h2>
-      <label>Provider
-        <input id="cfg-provider" list="provider-options" placeholder="选择或输入 provider id">
-        <datalist id="provider-options"></datalist>
-      </label>
-      <label>API Key <input id="cfg-apikey" type="password" placeholder="sk-...（留空则不修改）"></label>
-      <label>Model <input id="cfg-model" type="text" placeholder="如 deepseek-chat"></label>
-      <label>Base URL <input id="cfg-baseurl" type="text" placeholder="通用 provider 需填写，如 http://127.0.0.1:11434/v1"></label>
-      <button id="save-model-btn">保存配置</button>
-    </section>
-    <!-- 事件日志（可折叠） -->
-    <section class="side-panel log-panel" id="log-panel">
-      <h2 class="panel-title log-toggle" id="log-toggle">📋 事件日志 <span class="log-count" id="log-count">0</span><span class="log-arrow">▾</span></h2>
-      <div id="log-body" class="log-body"><div id="log-list"></div></div>
-    </section>
-  </aside>
+<!-- 玻璃壳体：无边框透明窗口里的一整块悬浮玻璃（外圈留透明缝隙，让窗口与桌面"呼吸"） -->
+<div class="window-shell" id="window-shell">
 
-  <main id="chat-area">
-    <header id="chat-header">
-      <h1 id="chat-title">Agent Base</h1>
-      <span class="header-sub">对话 · 工具审批 · 插件扩展</span>
-    </header>
-    <div id="messages" class="messages"></div>
-    <!-- 底部输入区 -->
-    <footer id="composer">
-      <div id="thinking" class="thinking hidden"><span class="dot"></span><span class="thinking-text">思考中…</span><button id="stop-btn" class="btn-stop">停止</button></div>
-      <div id="input-row">
-        <textarea id="message-input" rows="1" placeholder="输入消息，Enter 发送，Shift+Enter 换行"></textarea>
-        <button id="send-btn" class="btn-send">发送</button>
-      </div>
-    </footer>
-  </main>
-</div>
+  <!-- 环境光壁纸：壳体内的彩色光斑层，玻璃面板都从它上面取景模糊 -->
+  <div class="wallpaper" aria-hidden="true">
+    <div class="blob blob-a"></div>
+    <div class="blob blob-b"></div>
+    <div class="blob blob-c"></div>
+    <div class="blob blob-d"></div>
+    <div class="grain"></div>
+  </div>
 
-<!-- 工具审批模态框 -->
-<div id="approval-modal" class="modal hidden">
-  <div class="modal-mask"></div>
-  <div class="modal-card">
-    <h3>🔐 等待工具审批</h3>
-    <div class="modal-row">工具 <code id="apv-tool-name"></code><span id="apv-reason" class="apv-reason hidden"></span></div>
-    <div class="modal-row label-dim">参数（批准前可直接告诉模型修改后的参数：改下方 JSON 并批准）</div>
-    <table id="apv-args-table" class="args-table">
-      <thead><tr><th style="width:30%">键</th><th>值</th></tr></thead>
-      <tbody></tbody>
-    </table>
-    <div id="apv-args-raw" class="apv-raw hidden"></div>
-    <label class="reject-reason">拒绝原因（可选）<input id="apv-reason-input" type="text" placeholder="填写后作为 reason 传给后端"></label>
-    <div class="modal-actions">
-      <button id="apv-reject-btn" class="btn-reject">拒绝</button>
-      <button id="apv-approve-btn" class="btn-approve">批准</button>
+  <!-- 自绘标题栏：整条是拖拽区；左侧品牌，中间会话名，右侧窗控胶囊 -->
+  <header id="titlebar">
+    <div class="brand"><span class="brand-mark"></span>agent-base</div>
+    <div class="titlebar-title" id="chat-title">Agent Base</div>
+    <div class="win-controls">
+      <button id="win-min" class="win-btn" title="最小化" aria-label="最小化"><i></i></button>
+      <button id="win-max" class="win-btn" title="最大化 / 还原" aria-label="最大化"><i></i><i></i></button>
+      <button id="win-close" class="win-btn win-close" title="关闭" aria-label="关闭"><i></i></button>
+    </div>
+  </header>
+
+  <!-- 主布局：左侧边栏 + 右侧聊天区 -->
+  <div id="app">
+    <aside id="sidebar">
+      <!-- 会话面板（v0.2 多会话） -->
+      <section class="side-panel glass" id="session-panel">
+        <h2 class="panel-title">会话<button id="session-new-btn" class="btn-mini">＋ 新建</button></h2>
+        <div id="session-list" class="session-list"></div>
+        <div id="session-empty" class="empty-hint hidden">暂无会话</div>
+      </section>
+      <!-- 插件管理面板 -->
+      <section class="side-panel glass" id="plugin-panel">
+        <h2 class="panel-title">插件与 MCP</h2>
+        <div id="plugin-list" class="plugin-list"></div>
+        <div id="plugin-empty" class="empty-hint hidden">暂无插件</div>
+        <div id="mcp-list" class="mcp-list"></div>
+        <div class="install-row">
+          <input id="plugin-dir" type="text" placeholder="插件目录绝对路径，如 D:\plugins\my-plugin">
+          <button id="install-btn" class="btn-glass">安装</button>
+        </div>
+      </section>
+      <!-- 模型配置面板 -->
+      <section class="side-panel glass" id="model-panel">
+        <h2 class="panel-title">模型配置</h2>
+        <label>Provider
+          <input id="cfg-provider" list="provider-options" placeholder="选择或输入 provider id">
+          <datalist id="provider-options"></datalist>
+        </label>
+        <label>API Key <input id="cfg-apikey" type="password" placeholder="sk-...（留空则不修改）"></label>
+        <label>Model <input id="cfg-model" type="text" placeholder="如 deepseek-chat"></label>
+        <label>Base URL <input id="cfg-baseurl" type="text" placeholder="通用 provider 需填写，如 http://127.0.0.1:11434/v1"></label>
+        <button id="save-model-btn" class="btn-glass btn-glass-primary">保存配置</button>
+      </section>
+      <!-- 事件日志（可折叠） -->
+      <section class="side-panel glass log-panel" id="log-panel">
+        <h2 class="panel-title log-toggle" id="log-toggle">事件日志 <span class="log-count" id="log-count">0</span><span class="log-arrow">▾</span></h2>
+        <div id="log-body" class="log-body"><div id="log-list"></div></div>
+      </section>
+    </aside>
+
+    <main id="chat-area">
+      <div id="messages" class="messages"></div>
+      <!-- 底部输入区 -->
+      <footer id="composer" class="glass">
+        <div id="thinking" class="thinking hidden"><span class="dot"></span><span class="thinking-text">思考中…</span><button id="stop-btn" class="btn-stop">停止</button></div>
+        <div id="input-row">
+          <textarea id="message-input" rows="1" placeholder="输入消息，Enter 发送，Shift+Enter 换行"></textarea>
+          <button id="send-btn" class="btn-glass btn-glass-primary">发送</button>
+        </div>
+      </footer>
+    </main>
+  </div>
+
+  <!-- 工具审批模态框（在壳体内，跟随玻璃圆角裁切） -->
+  <div id="approval-modal" class="modal hidden">
+    <div class="modal-mask"></div>
+    <div class="modal-card glass-strong">
+      <h3>等待工具审批</h3>
+      <div class="modal-row">工具 <code id="apv-tool-name"></code><span id="apv-reason" class="apv-reason hidden"></span></div>
+      <div class="modal-row label-dim">参数（批准前可直接告诉模型修改后的参数：改下方 JSON 并批准）</div>
+      <table id="apv-args-table" class="args-table">
+        <thead><tr><th style="width:30%">键</th><th>值</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div id="apv-args-raw" class="apv-raw hidden"></div>
+      <label class="reject-reason">拒绝原因（可选）<input id="apv-reason-input" type="text" placeholder="填写后作为 reason 传给后端"></label>
+      <div class="modal-actions">
+        <button id="apv-reject-btn" class="btn-glass btn-reject">拒绝</button>
+        <button id="apv-approve-btn" class="btn-glass btn-approve">批准</button>
+      </div>
     </div>
   </div>
 </div>

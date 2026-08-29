@@ -26,7 +26,7 @@ const el = {
   cfgProvider: $('#cfg-provider'), cfgKey: $('#cfg-apikey'), cfgModel: $('#cfg-model'), cfgUrl: $('#cfg-baseurl'), saveModel: $('#save-model-btn'),
   providerOptions: $('#provider-options'),
   sessList: $('#session-list'), sessEmpty: $('#session-empty'), sessNew: $('#session-new-btn'), chatTitle: $('#chat-title'),
-  mcpList: $('#mcp-list'),
+  mcpList: $('#mcp-list'), winMin: $('#win-min'), winMax: $('#win-max'), winClose: $('#win-close'),
   logList: $('#log-list'), logCount: $('#log-count'), logToggle: $('#log-toggle'), logBody: $('#log-body'),
 };
 const st = { busy: false, boxes: new Map(), tools: new Map(), pending: null, sessions: [], currentSessionId: null };
@@ -498,6 +498,19 @@ function log(name, payload) {
   el.logCount.textContent = String(el.logList.children.length);
 }
 
+/* ================= [8.5] 窗口外壳控制（液态玻璃无边框窗口） ================= */
+/** 最小化 / 最大化还原 / 关闭；最大化状态切换 body.maximized（玻璃板去掉圆角铺满屏幕） */
+function initWindowControls() {
+  const w = window.agentWindow;
+  if (!w || typeof w.minimize !== 'function') return;
+  el.winMin.addEventListener('click', () => w.minimize());
+  el.winMax.addEventListener('click', () => w.toggleMaximize());
+  el.winClose.addEventListener('click', () => w.close());
+  if (typeof w.onState === 'function') {
+    w.onState((state) => document.body.classList.toggle('maximized', !!(state && state.maximized)));
+  }
+}
+
 /* ================= [9] 事件订阅与初始化 ================= */
 function subscribe() {
   const api = window.agentBase;
@@ -539,6 +552,7 @@ function init() {
     if (arrow) arrow.textContent = folded ? '▸' : '▾';
   });
   if (!subscribe()) return;
+  initWindowControls();
   loadPlugins();
   loadSessions();
   loadProviders();

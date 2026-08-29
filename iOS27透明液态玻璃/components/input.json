@@ -1,0 +1,65 @@
+{
+  "slug": "input",
+  "schemaVersion": 2,
+  "name": "Input 输入框",
+  "category": "Forms",
+  "sourceKind": "from-scratch",
+  "confidence": "medium",
+  "semanticTypeCandidates": [
+    {
+      "candidate": "input",
+      "evidence": "Glass text field with floating label, focus ring and error state; desktop form control in iOS27 style."
+    }
+  ],
+  "variantDimensions": {
+    "state": ["default", "focused (blue ring)", "filled", "error (red tint + message)", "disabled"],
+    "size": ["md 40px", "lg 48px"]
+  },
+  "representativeVariants": [
+    {
+      "name": "Glass input default",
+      "whySelected": "Text field as translucent glass inset — fill over blur, hairline border, rounded corners",
+      "traits": {
+        "fill": "var(--surface-glass)",
+        "border": "var(--border)",
+        "radius": "var(--radius-md)",
+        "height": "var(--size-input-md)",
+        "text": "var(--foreground)",
+        "placeholder": "var(--muted-foreground)"
+      },
+      "childrenDigest": ["label 搜索", "placeholder 搜索项目、文件"]
+    },
+    {
+      "name": "Focused state",
+      "whySelected": "Focus ring in system blue with the Liquid Glass light response — key interactive detail",
+      "traits": {
+        "ring": "var(--ring)",
+        "border": "var(--color-primary)",
+        "fill": "var(--surface-glass)"
+      },
+      "childrenDigest": ["label", "placeholder"]
+    },
+    {
+      "name": "Error state",
+      "whySelected": "Red-tinted border with helper text, following iOS destructive semantics",
+      "traits": {
+        "border": "var(--color-error)",
+        "message": "var(--color-error)"
+      },
+      "childrenDigest": ["label", "error message 名称不能为空"]
+    }
+  ],
+  "visualSpecs": [
+    { "sample": "default", "label": "搜索", "text": "搜索项目、文件", "states": ["default", "focused"] },
+    { "sample": "error", "label": "名称", "text": "名称不能为空", "states": ["error"] }
+  ],
+  "anatomy": ["glass field", "label", "placeholder", "focus ring", "optional helper/error text", "optional leading icon"],
+  "structurePatterns": ["field height size-input-md", "radius-md", "focus ring --ring color-primary"],
+  "usageHints": {
+    "priorityHint": "medium",
+    "glassRule": "Fields sit directly on the content area (non-glass); the glass fill applies only to the control surface"
+  },
+  "doNotInvent": ["no Material underline style", "no boxy solid borders"],
+  "unknowns": ["label position (top vs floating) not fixed — top label chosen for desktop density"],
+  "keyInsightSeed": "Glass field with blue focus ring and red error semantics"
+}

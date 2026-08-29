@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+### 新增
+- **液态玻璃 UI**：无边框透明窗口 + 自绘标题栏（拖拽区 / 最小化 / 最大化 / 关闭）；玻璃壳体 + 环境光壁纸 + backdrop-filter 玻璃面板；最大化时玻璃板自动去圆角铺满
+- 窗口外壳控制 API（`window.agentWindow`，独立于 agent IPC 协议）与 `scripts/window-selftest.ts` 自测（`npm run test:window`，7 项断言）
+
 ### 规划中（见 docs/DEVELOPMENT_PLAN.md）
 - electron-builder 首次打包发布与自动更新（配置已备）
 - 插件受控执行 API / utilityProcess 进程池；插件签名与信任分级

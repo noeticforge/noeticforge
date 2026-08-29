@@ -1,0 +1,55 @@
+{
+  "slug": "navigation",
+  "schemaVersion": 2,
+  "name": "Navigation 导航",
+  "category": "Navigation",
+  "sourceKind": "from-scratch",
+  "confidence": "medium",
+  "semanticTypeCandidates": [
+    {
+      "candidate": "navigation",
+      "evidence": "Desktop app shell: floating glass sidebar + toolbar. Liquid Glass is officially recommended for navigation layers."
+    }
+  ],
+  "variantDimensions": {
+    "level": ["toolbar (top glass bar)", "sidebar (left glass rail)", "item state: selected / hover / rest"]
+  },
+  "representativeVariants": [
+    {
+      "name": "Glass sidebar",
+      "whySelected": "Floating glass navigation rail with tinted capsule for the selected item — Apple's official navigation use of Liquid Glass",
+      "traits": {
+        "fill": "var(--surface-glass)",
+        "border": "var(--border-hairline)",
+        "radius": "var(--radius-lg)",
+        "selected": "tinted capsule using var(--color-primary) at low alpha",
+        "selectedText": "var(--color-primary)",
+        "itemHeight": "var(--size-nav-item)"
+      },
+      "childrenDigest": ["app brand row", "search field", "nav items 首页/最近/收藏/设置", "avatar row"]
+    },
+    {
+      "name": "Glass toolbar",
+      "whySelected": "Top floating toolbar over content with title and actions — regular glass, low profile",
+      "traits": {
+        "fill": "var(--surface-glass)",
+        "border": "var(--border-hairline)",
+        "radius": "var(--radius-md)"
+      },
+      "childrenDigest": ["window title 概览", "primary button 新建", "icon buttons"]
+    }
+  ],
+  "visualSpecs": [
+    { "sample": "sidebar", "text": "首页", "states": ["selected", "rest", "hover"] },
+    { "sample": "toolbar", "text": "概览", "states": ["rest"] }
+  ],
+  "anatomy": ["glass rail", "brand row", "search input", "item list with tinted selected capsule", "footer avatar"],
+  "structurePatterns": ["sidebar floats with shadow-2 and margin", "selected item = translucent tint capsule + primary text", "toolbar pinned top"],
+  "usageHints": {
+    "priorityHint": "high",
+    "glassRule": "Navigation is THE primary glass layer; content area must stay non-glass so the glass reads clearly"
+  },
+  "doNotInvent": ["no opaque white sidebars", "no double glass stacking"],
+  "unknowns": ["sidebar width convention assumed 240px desktop standard"],
+  "keyInsightSeed": "Floating glass sidebar with tinted capsule selection"
+}
