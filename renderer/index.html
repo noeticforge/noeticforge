@@ -6,14 +6,12 @@
 <title>agent-base</title>
 <link rel="stylesheet" href="style.css">
 </head>
-<body>
-<!-- 顶部 toast 容器：所有 ok:false 的错误提示都打在这里 -->
+<body class="theme-light">
 <div id="toast-box" aria-live="polite"></div>
 
-<!-- 玻璃壳体：无边框透明窗口里的一整块悬浮玻璃（外圈留透明缝隙，让窗口与桌面"呼吸"） -->
+<!-- 玻璃壳体：无边框透明窗口里的一整块玻璃 -->
 <div class="window-shell" id="window-shell">
-
-  <!-- 环境光壁纸：壳体内的彩色光斑层，玻璃面板都从它上面取景模糊 -->
+  <!-- 环境光壁纸 -->
   <div class="wallpaper" aria-hidden="true">
     <div class="blob blob-a"></div>
     <div class="blob blob-b"></div>
@@ -22,70 +20,188 @@
     <div class="grain"></div>
   </div>
 
-  <!-- 自绘标题栏：整条是拖拽区；左侧品牌，中间会话名，右侧窗控胶囊 -->
-  <header id="titlebar">
-    <div class="brand"><span class="brand-mark"></span>agent-base</div>
-    <div class="titlebar-title" id="chat-title">Agent Base</div>
-    <div class="win-controls">
-      <button id="win-min" class="win-btn" title="最小化" aria-label="最小化"><i></i></button>
-      <button id="win-max" class="win-btn" title="最大化 / 还原" aria-label="最大化"><i></i><i></i></button>
-      <button id="win-close" class="win-btn win-close" title="关闭" aria-label="关闭"><i></i></button>
+  <!-- ============ 左侧栏：项目（会话）/ 任务 / 用户 ============ -->
+  <aside id="sidebar">
+    <div class="side-top">
+      <div class="brand"><span class="brand-mark"></span><span>agent-base</span></div>
+      <button id="btn-new-session" class="side-action">
+        <span class="ico">⊕</span><span class="lbl">新建会话</span><kbd>Ctrl+N</kbd>
+      </button>
+      <div class="side-search">
+        <span class="ico">⌕</span>
+        <input id="session-search" type="text" placeholder="搜索会话">
+        <kbd>Ctrl+K</kbd>
+      </div>
     </div>
-  </header>
+    <div class="side-scroll">
+      <div class="side-group-head"><span class="ico">#</span><span>项目</span></div>
+      <div id="session-list" class="session-list"></div>
+      <div id="session-empty" class="side-placeholder hidden">还没有会话</div>
+      <div class="side-group-head"><span class="ico">≣</span><span>任务</span></div>
+      <div class="side-placeholder">还没有任务</div>
+    </div>
+    <div class="side-foot">
+      <div class="user-chip"><span class="avatar">A</span><span class="uname">agent-base</span><span class="badge-lite">Lite</span></div>
+      <button id="btn-open-settings" class="icon-btn" title="设置">⚙</button>
+    </div>
+  </aside>
 
-  <!-- 主布局：左侧边栏 + 右侧聊天区 -->
-  <div id="app">
-    <aside id="sidebar">
-      <!-- 会话面板（v0.2 多会话） -->
-      <section class="side-panel glass" id="session-panel">
-        <h2 class="panel-title">会话<button id="session-new-btn" class="btn-mini">＋ 新建</button></h2>
-        <div id="session-list" class="session-list"></div>
-        <div id="session-empty" class="empty-hint hidden">暂无会话</div>
-      </section>
-      <!-- 插件管理面板 -->
-      <section class="side-panel glass" id="plugin-panel">
-        <h2 class="panel-title">插件与 MCP</h2>
-        <div id="plugin-list" class="plugin-list"></div>
-        <div id="plugin-empty" class="empty-hint hidden">暂无插件</div>
-        <div id="mcp-list" class="mcp-list"></div>
-        <div class="install-row">
-          <input id="plugin-dir" type="text" placeholder="插件目录绝对路径，如 D:\plugins\my-plugin">
-          <button id="install-btn" class="btn-glass">安装</button>
+  <!-- ============ 主列：顶栏 + 对话区 + 右侧面板 + 设置页 ============ -->
+  <div class="main-col">
+    <header id="topbar">
+      <div class="topbar-left">
+        <span id="chat-title" class="topbar-title">agent-base</span>
+        <span id="chip-provider" class="chip hidden"></span>
+      </div>
+      <div class="topbar-right">
+        <button id="btn-toggle-panel" class="icon-btn" title="侧边面板">▦</button>
+        <div class="win-controls">
+          <button id="win-min" class="win-btn" title="最小化"><i></i></button>
+          <button id="win-max" class="win-btn" title="最大化 / 还原"><i></i><i></i></button>
+          <button id="win-close" class="win-btn win-close" title="关闭"><i></i><i></i></button>
         </div>
-      </section>
-      <!-- 模型配置面板 -->
-      <section class="side-panel glass" id="model-panel">
-        <h2 class="panel-title">模型配置</h2>
-        <label>Provider
-          <input id="cfg-provider" list="provider-options" placeholder="选择或输入 provider id">
-          <datalist id="provider-options"></datalist>
-        </label>
-        <label>API Key <input id="cfg-apikey" type="password" placeholder="sk-...（留空则不修改）"></label>
-        <label>Model <input id="cfg-model" type="text" placeholder="如 deepseek-chat"></label>
-        <label>Base URL <input id="cfg-baseurl" type="text" placeholder="通用 provider 需填写，如 http://127.0.0.1:11434/v1"></label>
-        <button id="save-model-btn" class="btn-glass btn-glass-primary">保存配置</button>
-      </section>
-      <!-- 事件日志（可折叠） -->
-      <section class="side-panel glass log-panel" id="log-panel">
-        <h2 class="panel-title log-toggle" id="log-toggle">事件日志 <span class="log-count" id="log-count">0</span><span class="log-arrow">▾</span></h2>
-        <div id="log-body" class="log-body"><div id="log-list"></div></div>
-      </section>
-    </aside>
+      </div>
+    </header>
 
-    <main id="chat-area">
-      <div id="messages" class="messages"></div>
-      <!-- 底部输入区 -->
-      <footer id="composer" class="glass">
-        <div id="thinking" class="thinking hidden"><span class="dot"></span><span class="thinking-text">思考中…</span><button id="stop-btn" class="btn-stop">停止</button></div>
-        <div id="input-row">
-          <textarea id="message-input" rows="1" placeholder="输入消息，Enter 发送，Shift+Enter 换行"></textarea>
-          <button id="send-btn" class="btn-glass btn-glass-primary">发送</button>
+    <div class="main-body">
+      <!-- 对话区 -->
+      <section id="chat-area">
+        <div id="messages"></div>
+
+        <!-- 悬浮进程卡（循环进行中显示） -->
+        <div id="status-card" class="glass-card hidden">
+          <div class="sc-head">
+            <span class="sc-title">进程</span>
+            <span class="sc-count" id="sc-count">0/0</span>
+            <button id="sc-stop" class="sc-stop">■ 停止</button>
+          </div>
+          <div id="sc-items"></div>
+          <div class="sc-elapsed" id="sc-elapsed">已运行 0 秒</div>
         </div>
-      </footer>
-    </main>
+
+        <!-- 底部富输入框 -->
+        <footer id="composer">
+          <div id="thinking" class="think-row hidden"><span class="think-ico">◎</span><span id="thinking-text">思考 · 0 秒</span></div>
+          <div class="composer-card glass-card">
+            <textarea id="message-input" rows="1" placeholder="输入消息，Enter 发送，Shift+Enter 换行"></textarea>
+            <div class="composer-row">
+              <button id="btn-plus" class="round-btn" title="更多">＋</button>
+              <button id="btn-policy" class="pill" title="权限模式"><span class="ico">🛡</span><span class="pill-lbl">完全访问</span><span class="caret">▾</span></button>
+              <div class="spacer"></div>
+              <button id="btn-model" class="pill" title="模型"><span class="pill-lbl" id="model-lbl">未配置</span><span class="caret">▾</span></button>
+              <button id="btn-effort" class="pill" title="推理力度（循环最大迭代数）"><span class="ico">◎</span><span class="pill-lbl">最高</span><span class="caret">▾</span></button>
+              <button id="send-btn" class="btn-send-black" title="发送">↑</button>
+            </div>
+          </div>
+        </footer>
+      </section>
+
+      <!-- 右侧标签面板 -->
+      <aside id="right-panel" class="hidden">
+        <div class="rp-tabs">
+          <button class="rp-tab active" data-tab="events">审查</button>
+          <button class="rp-tab" data-tab="audit">审计</button>
+          <button id="rp-close" class="icon-btn" title="关闭面板">✕</button>
+        </div>
+        <div class="rp-body">
+          <div id="rp-events" class="rp-page"></div>
+          <div id="rp-audit" class="rp-page hidden">
+            <div class="rp-toolbar"><span id="rp-audit-meta"></span><button id="rp-refresh-audit" class="btn-mini">刷新</button></div>
+            <div id="rp-audit-list"></div>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <!-- ============ 全屏设置页 ============ -->
+    <div id="settings-view" class="hidden">
+      <div class="set-nav">
+        <button id="set-back" class="set-back">‹ 返回工作区</button>
+        <div class="set-group">基础设置</div>
+        <button class="set-item active" data-page="models">模型设置</button>
+        <button class="set-item" data-page="appearance">外观</button>
+        <button class="set-item" data-page="general">常规</button>
+        <div class="set-group">Agent 能力</div>
+        <button class="set-item" data-page="plugins">插件</button>
+        <button class="set-item" data-page="mcp">MCP 服务器</button>
+      </div>
+      <div class="set-content">
+        <!-- 模型设置 -->
+        <section class="set-page" data-page="models">
+          <h1>模型设置</h1>
+          <p class="set-desc">管理自定义模型供应商，配置后可在聊天时选择使用。</p>
+          <div class="models-layout">
+            <div class="models-side glass-card">
+              <div class="models-side-group">内置供应商</div>
+              <div id="provider-list"></div>
+              <div class="models-side-hint">选择左侧供应商进行配置；保存后立即生效。</div>
+            </div>
+            <div class="models-detail glass-card" id="provider-detail">
+              <div class="pd-head">
+                <h2 id="pd-name">—</h2>
+                <span id="pd-format" class="chip"></span>
+              </div>
+              <label>Base URL<input id="pd-baseurl" type="text" placeholder="https://api.example.com/v1"></label>
+              <label>API Key<input id="pd-apikey" type="password" placeholder="留空则继续使用已保存的 Key"></label>
+              <div class="pd-label">模型列表</div>
+              <div id="pd-models" class="pd-models"></div>
+              <div class="pd-add-row">
+                <input id="pd-model-input" type="text" placeholder="模型名，如 deepseek-chat">
+                <button id="pd-model-add" class="btn-glass">＋ 添加模型</button>
+              </div>
+              <div class="pd-actions">
+                <button id="pd-save" class="btn-glass btn-glass-primary">保存并启用</button>
+              </div>
+              <p class="pd-note">模型列表会同步到聊天输入框的模型下拉；选择即切换，无需重填 API Key。</p>
+            </div>
+          </div>
+        </section>
+        <!-- 外观 -->
+        <section class="set-page hidden" data-page="appearance">
+          <h1>外观</h1>
+          <p class="set-desc">主题与动效。</p>
+          <div class="set-block">
+            <div class="pd-label">主题</div>
+            <div class="theme-cards">
+              <button class="theme-card" data-theme="theme-light"><span class="swatch swatch-light"></span>浅色玻璃</button>
+              <button class="theme-card" data-theme="theme-dark"><span class="swatch swatch-dark"></span>深色玻璃</button>
+            </div>
+          </div>
+          <div class="set-block">
+            <label class="check-row"><input type="checkbox" id="opt-anim" checked> 壁纸光斑动画</label>
+          </div>
+        </section>
+        <!-- 常规 -->
+        <section class="set-page hidden" data-page="general">
+          <h1>常规</h1>
+          <p class="set-desc">应用信息。</p>
+          <div id="general-info" class="kv-list glass-card"></div>
+        </section>
+        <!-- 插件 -->
+        <section class="set-page hidden" data-page="plugins">
+          <h1>插件</h1>
+          <p class="set-desc">已安装插件与本地目录安装。协议与审批机制见 docs/PLUGIN_PROTOCOL.md。</p>
+          <div id="plugin-list-settings" class="plugin-list"></div>
+          <div id="plugin-empty-settings" class="side-placeholder hidden">暂无插件</div>
+          <div class="install-row glass-card">
+            <input id="plugin-dir" type="text" placeholder="插件目录绝对路径，如 D:\plugins\my-plugin">
+            <button id="install-btn" class="btn-glass">安装</button>
+          </div>
+        </section>
+        <!-- MCP -->
+        <section class="set-page hidden" data-page="mcp">
+          <h1>MCP 服务器</h1>
+          <p class="set-desc">配置保存在项目根目录 mcp.json（与 Claude Desktop 格式兼容）；readOnlyHint 工具免审批，其余默认需要批准。</p>
+          <div id="mcp-server-list" class="mcp-list"></div>
+          <div class="pd-label">mcp.json</div>
+          <textarea id="mcp-json" class="code-editor" rows="12" spellcheck="false"></textarea>
+          <div class="pd-actions"><button id="mcp-save" class="btn-glass btn-glass-primary">保存并应用</button></div>
+        </section>
+      </div>
+    </div>
   </div>
 
-  <!-- 工具审批模态框（在壳体内，跟随玻璃圆角裁切） -->
+  <!-- 工具审批模态框 -->
   <div id="approval-modal" class="modal hidden">
     <div class="modal-mask"></div>
     <div class="modal-card glass-strong">
@@ -105,6 +221,9 @@
     </div>
   </div>
 </div>
+
+<!-- 下拉菜单挂载点 -->
+<div id="dropdown-root"></div>
 
 <script src="vendor/marked.umd.js"></script>
 <script src="vendor/purify.min.js"></script>

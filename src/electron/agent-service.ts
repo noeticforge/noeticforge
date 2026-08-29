@@ -62,6 +62,39 @@ export interface SessionDTO extends SessionMetaDTO {
   messages: ChatMessage[];
 }
 
+/**
+ * 权限模式（UI 编排层的四个预设，映射到循环层三道关卡的策略参数）：
+ *   ask-before-change 变更前确认：写文件/执行命令前必须审批
+ *   auto-edit         自动编辑：写文件免审批，执行命令仍需审批
+ *   plan              计划模式：只读（写/执行/联网在运行时策略层直接拒绝）
+ *   full              完全访问：不额外限制（插件自身声明的审批钩子仍然生效）
+ */
+export type PermissionMode = 'ask-before-change' | 'auto-edit' | 'plan' | 'full';
+
+export const PERMISSION_MODES: PermissionMode[] = ['ask-before-change', 'auto-edit', 'plan', 'full'];
+
+const POLICY_PRESETS: Record<PermissionMode, { allowed?: Permission[]; force: Permission[] }> = {
+  'ask-before-change': { force: ['fs:write', 'shell:exec'] },
+  'auto-edit': { force: ['shell:exec'] },
+  plan: { allowed: ['fs:read'], force: [] },
+  full: { force: [] },
+};
+
+/** 应用信息快照（协议 §3.21 get-app-info） */
+export interface AppInfo {
+  version: string;
+  appDir: string;
+  provider: string | null;
+  model: string | null;
+  models: string[];
+  baseUrl: string | null;
+  permissionMode: PermissionMode;
+  maxIterations: number;
+  sessionCount: number;
+  pluginCount: number;
+  mcpCount: number;
+}
+
 /** 主进程 → UI 的全部推送通道 */
 export type PushChannel =
   | 'message-chunk'
@@ -98,6 +131,8 @@ const SYSTEM_PROMPT = `你是一个桌面端助手，可以通过提供的工具
 const DEFAULT_REGISTRY_URL =
   'https://raw.githubusercontent.com/agent-base/registry/main/registry.json';
 
+const APP_VERSION = '0.3.0';
+
 interface RunningLoop {
   messageId: string;
   abort: AbortController;
@@ -116,12 +151,19 @@ export class AgentService {
   private provider: LLMProvider | null;
   private readonly appDir: string;
   private readonly pushEvent: (channel: PushChannel, payload: unknown) => void;
-  private readonly maxIterations: number;
+  private maxIterations: number;
   /** 上下文 token 预算（估算值）。构造参数显式指定则优先，否则可被 config.json 覆盖 */
   private contextTokenBudget: number;
   private readonly explicitBudget: boolean;
-  private readonly allowedPermissions: Permission[] | undefined;
-  private readonly forceApprovalPermissions: Permission[] | undefined;
+  /** 权限模式 + 由其派生的策略参数（构造参数显式注入时以注入值为准，模式切换不再覆盖） */
+  private permissionMode: PermissionMode = 'full';
+  private readonly manualPolicy: boolean;
+  private allowedPermissions: Permission[] | undefined;
+  private forceApprovalPermissions: Permission[] | undefined;
+  /** 当前 provider 保存过的模型列表（设置页维护，输入框下拉消费） */
+  private models: string[] = [];
+  /** 当前 provider 保存的 baseUrl（设置页回填） */
+  private savedBaseUrl: string | null = null;
   private readonly pluginRegistryUrl: string;
 
   private readonly store: SessionStore;
@@ -145,8 +187,10 @@ export class AgentService {
     this.maxIterations = opts.maxIterations ?? 15;
     this.explicitBudget = typeof opts.contextTokenBudget === 'number';
     this.contextTokenBudget = opts.contextTokenBudget ?? 24_000;
+    this.manualPolicy = opts.allowedPermissions !== undefined || opts.forceApprovalPermissions !== undefined;
     this.allowedPermissions = opts.allowedPermissions;
     this.forceApprovalPermissions = opts.forceApprovalPermissions;
+    this.applyPolicy();
     this.pluginRegistryUrl = opts.pluginRegistryUrl ?? DEFAULT_REGISTRY_URL;
     this.provider = opts.initialProvider ?? null;
     this.store = new SessionStore(path.join(this.appDir, 'sessions'));
@@ -159,17 +203,37 @@ export class AgentService {
   async init(): Promise<void> {
     let cfg: Record<string, unknown> = {};
     const cfgPath = path.join(this.appDir, 'config.json');
-    if (!this.provider && existsSync(cfgPath)) {
+    if (existsSync(cfgPath)) {
       try {
         cfg = JSON.parse(await readFile(cfgPath, 'utf-8'));
-        this.provider = createProvider(cfg as unknown as ProviderConfig);
       } catch {
-        // 配置损坏 = 未配置，等 UI 重新 set-model-config
+        cfg = {}; // 配置损坏 = 未配置，等 UI 重新 set-model-config
+      }
+      // Provider 只在未注入时从配置创建；策略字段（权限模式/预算/模型列表）无论如何都要加载
+      if (!this.provider) {
+        try {
+          this.provider = createProvider(cfg as unknown as ProviderConfig);
+        } catch {
+          // 配置不完整 = 未配置，等 UI 重新 set-model-config
+        }
       }
     }
     // config.json 可覆盖的运行时策略（构造参数显式指定的优先）
     if (!this.explicitBudget && typeof cfg.contextTokenBudget === 'number' && cfg.contextTokenBudget > 0) {
       this.contextTokenBudget = cfg.contextTokenBudget;
+    }
+    if (typeof cfg.permissionMode === 'string' && PERMISSION_MODES.includes(cfg.permissionMode as PermissionMode)) {
+      this.permissionMode = cfg.permissionMode as PermissionMode;
+      this.applyPolicy();
+    }
+    if (!this.manualPolicy && typeof cfg.maxIterations === 'number' && cfg.maxIterations >= 1 && cfg.maxIterations <= 100) {
+      this.maxIterations = cfg.maxIterations;
+    }
+    if (Array.isArray(cfg.models)) {
+      this.models = (cfg.models as unknown[]).filter((m): m is string => typeof m === 'string' && !!m.trim());
+    }
+    if (typeof cfg.baseUrl === 'string' && cfg.baseUrl.trim()) {
+      this.savedBaseUrl = cfg.baseUrl.trim();
     }
     await loadPluginsFromRoot(path.join(this.appDir, 'plugins'), this.registry);
     await this.store.init();
@@ -449,21 +513,7 @@ export class AgentService {
     if (typeof providerId !== 'string' || !listProviderMetas().some((p) => p.id === providerId)) {
       return err('E_PROVIDER_UNSUPPORTED', `不支持的 provider: ${providerId}`, 'llm');
     }
-    if (typeof cfg.apiKey !== 'string' || !cfg.apiKey.trim()) {
-      return err('E_INVALID_CONFIG', '缺少 apiKey', 'llm');
-    }
-    try {
-      this.provider = createProvider({
-        provider: providerId,
-        apiKey: cfg.apiKey,
-        model: typeof cfg.model === 'string' ? cfg.model : undefined,
-        baseUrl: typeof cfg.baseUrl === 'string' ? cfg.baseUrl : undefined,
-        maxTokens: typeof cfg.maxTokens === 'number' ? cfg.maxTokens : undefined,
-      });
-    } catch (e) {
-      return err('E_INVALID_CONFIG', `配置无效: ${e instanceof Error ? e.message : String(e)}`, 'llm');
-    }
-    // 读改写：保留文件里与 provider 无关的策略字段（contextTokenBudget / 权限等）
+    // 读旧配置：① 切模型（不重填 Key）时回填已存 Key；② 维护模型列表
     const cfgPath = path.join(this.appDir, 'config.json');
     let existing: Record<string, unknown> = {};
     if (existsSync(cfgPath)) {
@@ -473,12 +523,47 @@ export class AgentService {
         existing = {};
       }
     }
+    let apiKey = typeof cfg.apiKey === 'string' ? cfg.apiKey.trim() : '';
+    if (!apiKey) {
+      const sameProvider = existing.provider === providerId;
+      const existingKey = typeof existing.apiKey === 'string' ? existing.apiKey.trim() : '';
+      if (sameProvider && existingKey) {
+        apiKey = existingKey; // 同 provider 切换模型/地址：复用已保存的 Key
+      } else {
+        return err('E_INVALID_CONFIG', '缺少 apiKey', 'llm');
+      }
+    }
+    // 模型列表：models 数组（设置页维护）优先；单改 model 时同步进列表
+    const models = Array.isArray(cfg.models)
+      ? (cfg.models as unknown[]).filter((m): m is string => typeof m === 'string' && !!m.trim()).map((m) => m.trim())
+      : undefined;
+    const model = typeof cfg.model === 'string' && cfg.model.trim() ? cfg.model.trim() : models?.[0];
+    try {
+      this.provider = createProvider({
+        provider: providerId,
+        apiKey,
+        model,
+        baseUrl: typeof cfg.baseUrl === 'string' ? cfg.baseUrl : undefined,
+        maxTokens: typeof cfg.maxTokens === 'number' ? cfg.maxTokens : undefined,
+      });
+    } catch (e) {
+      return err('E_INVALID_CONFIG', `配置无效: ${e instanceof Error ? e.message : String(e)}`, 'llm');
+    }
+    if (models) this.models = models;
+    else if (model && !this.models.includes(model)) {
+      this.models = [...(this.models.length ? this.models : []), model].slice(-8);
+    } else if (model) {
+      this.models = [model, ...this.models.filter((m) => m !== model)];
+    }
+    if (typeof cfg.baseUrl === 'string' && cfg.baseUrl.trim()) this.savedBaseUrl = cfg.baseUrl.trim();
+    // 读改写：保留文件里与 provider 无关的策略字段（contextTokenBudget / 权限等）
     const persist = {
       ...existing,
       provider: providerId,
-      apiKey: cfg.apiKey,
-      model: cfg.model,
-      baseUrl: cfg.baseUrl,
+      apiKey,
+      model,
+      models: this.models.length ? this.models : undefined,
+      baseUrl: typeof cfg.baseUrl === 'string' ? cfg.baseUrl : undefined,
       maxTokens: typeof cfg.maxTokens === 'number' ? cfg.maxTokens : undefined,
     };
     try {
@@ -523,6 +608,86 @@ export class AgentService {
       return err(code, e instanceof Error ? e.message : String(e), 'unknown');
     }
     return { ok: true, data: null };
+  }
+
+  // ---------- 策略与应用信息（协议 §3.22-3.24） ----------
+
+  /** 由权限模式派生策略参数；构造参数显式注入的（测试/嵌入场景）不被覆盖 */
+  private applyPolicy(): void {
+    if (this.manualPolicy) return;
+    const preset = POLICY_PRESETS[this.permissionMode];
+    this.allowedPermissions = preset.allowed;
+    this.forceApprovalPermissions = preset.force.length ? preset.force : undefined;
+  }
+
+  /** §3.22 set-agent-policy：权限模式 / 最大迭代数，立即生效并持久化 */
+  async setAgentPolicy(req: { permissionMode?: PermissionMode; maxIterations?: number }): Promise<IpcResult<null>> {
+    const mode = req?.permissionMode;
+    if (mode !== undefined) {
+      if (!PERMISSION_MODES.includes(mode)) {
+        return err('E_INVALID_CONFIG', `未知权限模式: ${mode}`, 'unknown');
+      }
+      this.permissionMode = mode;
+      this.applyPolicy();
+    }
+    const iters = req?.maxIterations;
+    if (iters !== undefined) {
+      if (typeof iters !== 'number' || iters < 1 || iters > 100 || !Number.isInteger(iters)) {
+        return err('E_INVALID_CONFIG', 'maxIterations 必须是 1-100 的整数', 'unknown');
+      }
+      if (!this.manualPolicy) this.maxIterations = iters;
+    }
+    try {
+      const cfgPath = path.join(this.appDir, 'config.json');
+      let existing: Record<string, unknown> = {};
+      if (existsSync(cfgPath)) {
+        try {
+          existing = JSON.parse(await readFile(cfgPath, 'utf-8'));
+        } catch {
+          existing = {};
+        }
+      }
+      await writeFile(cfgPath, JSON.stringify({
+        ...existing,
+        permissionMode: this.permissionMode,
+        maxIterations: this.manualPolicy ? existing.maxIterations : this.maxIterations,
+      }, null, 2), 'utf-8');
+    } catch {
+      // 持久化失败不影响本轮生效
+    }
+    return { ok: true, data: null };
+  }
+
+  /** §3.23 get-app-info：设置页与输入框下拉的一次性数据源 */
+  getAppInfo(): IpcResult<{ info: AppInfo }> {
+    const info: AppInfo = {
+      version: APP_VERSION,
+      appDir: this.appDir,
+      provider: this.provider?.id ?? null,
+      model: this.models[0] ?? null,
+      models: [...this.models],
+      baseUrl: this.savedBaseUrl,
+      permissionMode: this.permissionMode,
+      maxIterations: this.maxIterations,
+      sessionCount: this.store.list().length,
+      pluginCount: this.registry.listPlugins().length,
+      mcpCount: this.mcp.status().filter((s) => s.state === 'connected').length,
+    };
+    return { ok: true, data: { info } };
+  }
+
+  /** §3.24 read-audit：审计日志尾部（右侧「审计」标签页） */
+  async readAudit(req: { lines?: number }): Promise<IpcResult<{ lines: string[]; total: number }>> {
+    const max = Math.min(Math.max(req?.lines ?? 200, 1), 1000);
+    const file = path.join(this.appDir, 'audit.log');
+    if (!existsSync(file)) return { ok: true, data: { lines: [], total: 0 } };
+    try {
+      const raw = await readFile(file, 'utf-8');
+      const all = raw.split('\n').filter((l) => l.trim());
+      return { ok: true, data: { lines: all.slice(-max), total: all.length } };
+    } catch (e) {
+      return err('E_INTERNAL', `读取审计日志失败: ${e instanceof Error ? e.message : String(e)}`, 'unknown');
+    }
   }
 
   // ---------- 插件设置（富插件协议 v2） ----------

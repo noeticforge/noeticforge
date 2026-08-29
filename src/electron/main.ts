@@ -79,6 +79,10 @@ app.whenReady().then(async () => {
   handle('list-mcp-servers', () => service.listMcpServers());
   handle('set-mcp-config', (req) => service.setMcpConfig(req));
   handle('toggle-mcp-server', (req) => service.toggleMcpServer(req));
+  // 策略与应用信息
+  handle('set-agent-policy', (req) => service.setAgentPolicy(req));
+  handle('get-app-info', () => service.getAppInfo());
+  handle('read-audit', (req) => service.readAudit(req));
 
   await service.init();
   createWindow();

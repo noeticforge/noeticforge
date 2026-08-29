@@ -32,6 +32,10 @@ const INVOKE_CHANNELS = [
   'list-mcp-servers',
   'set-mcp-config',
   'toggle-mcp-server',
+  // 策略与应用信息（v0.3）
+  'set-agent-policy',
+  'get-app-info',
+  'read-audit',
 ] as const;
 
 const PUSH_CHANNELS = [
@@ -102,6 +106,12 @@ const agentBase = {
   listMcpServers: () => invoke('list-mcp-servers'),
   setMcpConfig: (req: { config: Record<string, unknown> }) => invoke('set-mcp-config', req),
   toggleMcpServer: (req: { name: string; enabled: boolean }) => invoke('toggle-mcp-server', req),
+
+  // ---- 策略与应用信息 ----
+  setAgentPolicy: (req: { permissionMode?: string; maxIterations?: number }) =>
+    invoke('set-agent-policy', req),
+  getAppInfo: () => invoke('get-app-info'),
+  readAudit: (req?: { lines?: number }) => invoke('read-audit', req),
 
   // ---- 订阅（主进程 → UI 推送）----
   on,

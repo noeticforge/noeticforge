@@ -277,6 +277,45 @@ async function main(): Promise<void> {
   check(unknownToggle.ok === false && unknownToggle.error.code === 'E_MCP_NOT_FOUND', 'toggle 不存在的 MCP server → E_MCP_NOT_FOUND');
   await service4.shutdown();
 
+  // ---------- 10. 策略与应用信息（v0.3）：权限模式 / 审计 / 免 Key 切模型 ----------
+  const audit = await service.readAudit({ lines: 50 });
+  check(
+    audit.ok && (audit.data?.lines.length ?? 0) > 0 && audit.data!.lines.every((l) => { try { JSON.parse(l); return true; } catch { return false; } }),
+    'read-audit 返回 JSONL 审计记录（此前的工具调用与审批已落盘）',
+  );
+  const info0 = unwrap(service.getAppInfo()).info;
+  check(
+    info0.pluginCount >= 2 && info0.sessionCount >= 1 && info0.permissionMode === 'full' && info0.provider === 'openai-compatible',
+    'get-app-info 基础字段正确（provider 为第 6 节配置的 openai-compatible）',
+  );
+
+  const setPlan = await service.setAgentPolicy({ permissionMode: 'plan' });
+  check(setPlan.ok === true, 'set-agent-policy(plan) 成功');
+  check(unwrap(service.getAppInfo()).info.permissionMode === 'plan', '权限模式在运行态生效');
+  const mock5 = new MockProvider([
+    { content: '', toolCalls: [{ id: 'pol1', name: 'write-file.write', arguments: { path: 'plan-blocked.txt', content: 'x' } }], finishReason: 'tool_calls' },
+    { content: 'done', toolCalls: [], finishReason: 'stop' },
+  ]);
+  const service5 = new AgentService({ appDir, pushEvent: push, initialProvider: mock5 });
+  await service5.init(); // 从 config.json 读到 plan 模式
+  const send5 = service5.sendMessage({ message: { role: 'user', content: 'x' } });
+  check(send5.ok === true, '计划模式下发送消息正常');
+  await waitFor(() => events.some((e) => e.channel === 'tool-result' && e.payload.toolCallId === 'pol1'), 5000, 'pol1 结果');
+  const polRes = events.find((e) => e.channel === 'tool-result' && e.payload.toolCallId === 'pol1')!;
+  check(polRes.payload.result.error === 'permission-denied', '计划模式：写工具被运行时策略拒绝（permission-denied）');
+  check(!existsSync(path.join(appDir, 'plan-blocked.txt')), '计划模式：文件确实未被写入');
+  await service5.shutdown();
+
+  const backFull = await service.setAgentPolicy({ permissionMode: 'full' });
+  check(backFull.ok === true, '恢复 full 模式');
+
+  const reKey = await service.setModelConfig({ config: { provider: 'deepseek', apiKey: 'sk-test-only', model: 'deepseek-chat' } });
+  check(reKey.ok === true, '重新配置 deepseek + apiKey');
+  const rekey = await service.setModelConfig({ config: { provider: 'deepseek', model: 'deepseek-chat' } });
+  check(rekey.ok === true, '同 provider 切模型不重填 apiKey → 复用已存 Key');
+  const crossNoKey = await service.setModelConfig({ config: { provider: 'anthropic' } });
+  check(crossNoKey.ok === false && crossNoKey.error.code === 'E_INVALID_CONFIG', '跨 provider 且无 Key → E_INVALID_CONFIG');
+
   await rm(appDir, { recursive: true, force: true });
   console.log('\nIPC 自测全部通过 🎉');
 }
