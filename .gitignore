@@ -1,4 +1,8 @@
 node_modules/
 dist/
 config.json
+mcp.json
+sessions/
+audit.log
 smoke-test-output.txt
+*.tsbuildinfo

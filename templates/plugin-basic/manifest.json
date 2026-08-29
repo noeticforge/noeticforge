@@ -1,0 +1,20 @@
+{
+  "name": "my-plugin",
+  "version": "1.0.0",
+  "displayName": "示例插件",
+  "description": "agent-base 插件模板：演示 settings 注入与 markdown 渲染提示",
+  "author": "your-name",
+  "permissions": [],
+  "entry": "./dist/index.js",
+  "protocolVersion": 1,
+  "settings": {
+    "type": "object",
+    "properties": {
+      "greeting": {
+        "type": "string",
+        "description": "问候语前缀",
+        "default": "你好"
+      }
+    }
+  }
+}

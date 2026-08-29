@@ -1,0 +1,35 @@
+appId: com.agentbase.desktop
+productName: agent-base
+directories:
+  output: release/
+files:
+  - dist/**
+  - renderer/**
+  - plugins/builtin/**
+  - package.json
+  - "!**/*.map"
+  - "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}"
+asar: true
+# 内置插件目录保持可读：asar 内 fs 读取可用，无需 extraResources
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  artifactName: ${productName}-${version}-setup.${ext}
+portable:
+  artifactName: ${productName}-${version}-portable.${ext}
+mac:
+  target: dmg
+  category: public.app-category.productivity
+  # 未签名分发：首次打开需右键 → 打开；签名策略定夺后再启用 identity
+  identity: null
+linux:
+  target: AppImage
+  category: Utility
+publish:
+  provider: github

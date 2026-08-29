@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Agent Base 测试台</title>
+<title>Agent Base</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -13,11 +13,18 @@
 <!-- 主布局：左侧边栏 + 右侧聊天区 -->
 <div id="app">
   <aside id="sidebar">
+    <!-- 会话面板（v0.2 多会话） -->
+    <section class="side-panel" id="session-panel">
+      <h2 class="panel-title">💬 会话<button id="session-new-btn" class="btn-mini">＋ 新建</button></h2>
+      <div id="session-list" class="session-list"></div>
+      <div id="session-empty" class="empty-hint hidden">暂无会话</div>
+    </section>
     <!-- 插件管理面板 -->
     <section class="side-panel" id="plugin-panel">
-      <h2 class="panel-title">🧩 插件管理</h2>
+      <h2 class="panel-title">🧩 插件与 MCP</h2>
       <div id="plugin-list" class="plugin-list"></div>
       <div id="plugin-empty" class="empty-hint hidden">暂无插件</div>
+      <div id="mcp-list" class="mcp-list"></div>
       <div class="install-row">
         <input id="plugin-dir" type="text" placeholder="插件目录绝对路径，如 D:\plugins\my-plugin">
         <button id="install-btn">安装</button>
@@ -27,15 +34,12 @@
     <section class="side-panel" id="model-panel">
       <h2 class="panel-title">⚙️ 模型配置</h2>
       <label>Provider
-        <select id="cfg-provider">
-          <option value="deepseek">deepseek</option>
-          <option value="openai">openai</option>
-          <option value="anthropic">anthropic</option>
-        </select>
+        <input id="cfg-provider" list="provider-options" placeholder="选择或输入 provider id">
+        <datalist id="provider-options"></datalist>
       </label>
       <label>API Key <input id="cfg-apikey" type="password" placeholder="sk-...（留空则不修改）"></label>
       <label>Model <input id="cfg-model" type="text" placeholder="如 deepseek-chat"></label>
-      <label>Base URL <input id="cfg-baseurl" type="text" placeholder="如 https://api.deepseek.com"></label>
+      <label>Base URL <input id="cfg-baseurl" type="text" placeholder="通用 provider 需填写，如 http://127.0.0.1:11434/v1"></label>
       <button id="save-model-btn">保存配置</button>
     </section>
     <!-- 事件日志（可折叠） -->
@@ -47,8 +51,8 @@
 
   <main id="chat-area">
     <header id="chat-header">
-      <h1>Agent Base 测试台</h1>
-      <span class="header-sub">渲染进程参考页 · 通过 window.agentBase 驱动底座</span>
+      <h1 id="chat-title">Agent Base</h1>
+      <span class="header-sub">对话 · 工具审批 · 插件扩展</span>
     </header>
     <div id="messages" class="messages"></div>
     <!-- 底部输入区 -->
@@ -68,7 +72,7 @@
   <div class="modal-card">
     <h3>🔐 等待工具审批</h3>
     <div class="modal-row">工具 <code id="apv-tool-name"></code><span id="apv-reason" class="apv-reason hidden"></span></div>
-    <div class="modal-row label-dim">参数</div>
+    <div class="modal-row label-dim">参数（批准前可直接告诉模型修改后的参数：改下方 JSON 并批准）</div>
     <table id="apv-args-table" class="args-table">
       <thead><tr><th style="width:30%">键</th><th>值</th></tr></thead>
       <tbody></tbody>
@@ -82,6 +86,8 @@
   </div>
 </div>
 
+<script src="vendor/marked.umd.js"></script>
+<script src="vendor/purify.min.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

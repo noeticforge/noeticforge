@@ -463,38 +463,42 @@ UI (renderer)                            Agent 底座 (main)                    
 
 ```typescript
 interface LoopError {
-  code: string;                       // 错误码，见 §6.2
+  code: string;                       // 错误码，见 §6.2（单一事实源：src/shared/error-codes.ts）
   message: string;                    // 人类可读信息（中文/英文依 UI 语言）
-  phase: 'receive' | 'llm' | 'tool' | 'approval' | 'unknown';  // 出错阶段
+  phase: 'receive' | 'llm' | 'tool' | 'approval' | 'session' | 'unknown';  // 出错阶段
   toolCallId?: string;                // 工具相关错误时携带
   details?: Record<string, unknown>;  // 附加信息（如 HTTP 状态码、插件名）
 }
 ```
 
-### 6.2 错误码一览
+### 6.2 错误码一览（权威表，与 `src/shared/error-codes.ts`、`renderer/app.js` 由 CI `npm run check:codes` 强制同步）
 
 | 错误码 | 阶段 | 含义 |
 |---|---|---|
 | `E_INVALID_MESSAGE` | receive | 消息格式非法（role/结构错误） |
-| `E_PROVIDER_NOT_CONFIGURED` | llm | 尚未配置任何 LLM Provider |
-| `E_PROVIDER_UNSUPPORTED` | llm | Provider 类型不在 deepseek/openai/anthropic 之列 |
-| `E_INVALID_CONFIG` | llm | 配置缺字段或值非法 |
-| `E_LLM_ERROR` | llm | Provider 调用失败（含网络/超时/鉴权失败，见 `details`） |
-| `E_TOOL_NOT_FOUND` | tool | tool name 在全局工具表未命中 |
-| `E_TOOL_EXECUTION_ERROR` | tool | 工具 execute 抛出未捕获异常 |
-| `E_PERMISSION_DENIED` | tool | 运行时权限策略拒绝工具调用（工具层以 `result.error='permission-denied'` 的 tool-result 表达，见下方预置值说明） |
+| `E_LOOP_BUSY` | receive | 该会话上一轮循环未结束又收到新消息 |
 | `E_NO_PENDING_APPROVAL` | approval | 对不存在/已处理的 toolCallId 执行 approve/reject |
-| `E_LOOP_BUSY` | receive | 上一轮循环未结束又收到新消息 |
-| `E_STOPPED` | unknown | 当前已停止（非错误，仅信息性） |
-| `E_PLUGIN_NOT_FOUND` | unknown | 目标插件不存在 |
-| `E_PLUGIN_ALREADY_EXISTS` | unknown | 同 name 插件已存在且非热更新 |
-| `E_PLUGIN_IN_USE` | unknown | 插件工具正在执行，暂不可卸载 |
-| `E_PLUGIN_LOAD_FAILED` | unknown | 加载入口（如 import 失败） |
-| `E_PLUGIN_VALIDATION_FAILED` | unknown | manifest/工具校验未通过 |
-| `E_PLUGIN_UNINSTALL_FAILED` | unknown | 卸载过程失败 |
-| `E_PATH_NOT_FOUND` | unknown | 指定的目录/文件不存在 |
+| `E_LLM_ERROR` | llm | Provider 调用失败（网络/超时/鉴权等，循环层以 AgentLoopError 结构化抛出） |
+| `E_MAX_ITERATIONS` | unknown | 已达最大迭代次数，循环强制终止 |
 | `E_INTERNAL` | unknown | 兜底未知错误 |
-| `E_INVALID_APPROVAL` | approval | 审批参数非法（如 toolCallId 为空） |
+| `E_PROVIDER_NOT_CONFIGURED` | llm | 尚未配置任何 LLM Provider |
+| `E_PROVIDER_UNSUPPORTED` | llm | Provider 不在注册表中（见 §7.3） |
+| `E_INVALID_CONFIG` | llm | 配置缺字段或值非法 |
+| `E_SESSION_NOT_FOUND` | session | 会话不存在或已被删除（见 §7.1） |
+| `E_SESSION_IN_USE` | session | 会话有正在进行的循环，暂不可删除 |
+| `E_PATH_NOT_FOUND` | unknown | 指定的目录/文件不存在 |
+| `E_PLUGIN_VALIDATION_FAILED` | unknown | manifest/工具/协议版本校验未通过 |
+| `E_PLUGIN_LOAD_FAILED` | unknown | 加载入口失败（如 import 抛错） |
+| `E_PLUGIN_NOT_FOUND` | unknown | 目标插件不存在 |
+| `E_PLUGIN_IN_USE` | unknown | 插件工具正在执行，暂不可卸载 |
+| `E_PLUGIN_UNINSTALL_FAILED` | unknown | 卸载过程失败（文件删除出错） |
+| `E_PLUGIN_BUILTIN` | unknown | 内置插件不允许卸载 |
+| `E_PLUGIN_NOT_IN_REGISTRY` | unknown | 注册表索引中没有该插件 |
+| `E_CHECKSUM_MISMATCH` | unknown | 插件包 sha256 与注册表不符，中止安装 |
+| `E_REGISTRY_FETCH_FAILED` | unknown | 注册表索引或插件包下载失败 |
+| `E_MCP_NOT_FOUND` | unknown | 目标 MCP 服务器不存在（见 §7.2） |
+
+> v0.1 文档曾预留 `E_TOOL_NOT_FOUND` / `E_TOOL_EXECUTION_ERROR` / `E_PERMISSION_DENIED` / `E_STOPPED` / `E_PLUGIN_ALREADY_EXISTS` / `E_INVALID_APPROVAL`：工具层失败统一以 `tool-result`（`ToolResult.error` 预置值）表达而非错误码；停止以 `loop-done(stopped:true)` 表达；同名插件按热更新处理。以上错误码**已废弃**，保留记录防止误用。
 
 > **工具层 `ToolResult.error` 的预置值**（底座在以下 5 种场景固定构造；插件自定义 error 无保留词表，但新增约定值时需同步更新本文档与源码常量）：
 >
@@ -523,3 +527,80 @@ interface LoopError {
 - **主进程**：handler 永不主动 `throw`；捕获一切异常并转成 `{ ok:false, error }`。循环级致命错误以 `loop-error` 推送并结束本轮循环。
 - **渲染进程**：`invoke` 成功但 `ok:false` 时，读 `error.code` 决定 UI 文案与重试策略；不可恢复错误给出提示条即可，不要透传原始堆栈给用户。
 - 新增错误码：必须同步更新两张文档（本文 + 插件文档）与 `src` 常量，禁止在 UI 层硬编码新码的文案而不回写定义。
+
+---
+
+## 7. v0.2 / v0.3 协议增补（多会话 · Provider 注册表 · MCP · 插件设置）
+
+> 本节是 v0.1 之后新增通道与 payload 变更的权威定义。协议版本常量：preload 暴露
+> `window.agentBase.protocolVersion`（当前 `2`），UI 启动时应校验。
+> 通道命名与 §3/§4 保持一致：UI→主进程走 invoke，主进程→UI 走推送。
+
+### 7.0 v0.2 起的 payload 变更（既有通道）
+
+| 通道 | 变更 |
+|---|---|
+| `send-message` 请求 | 增加可选 `sessionId`；缺省写入当前活跃会话。返回值不变 |
+| `message-chunk` / `tool-started` / `tool-result` / `approval-required` / `loop-done` / `loop-error` 推送 | 全部增加 `sessionId` 字段（UI 据此把事件归并到会话视图） |
+| `loop-error` 的 `error.code` | 由循环层结构化抛出（`E_LLM_ERROR` / `E_MAX_ITERATIONS` / `E_INTERNAL`），废除字符串推断 |
+
+### 7.1 会话通道（invoke，v0.2）
+
+| 通道名 | 请求 payload | 返回 data |
+|---|---|---|
+| `list-sessions` | — | `{ sessions: SessionMeta[] }` |
+| `create-session` | `{ title?: string }` | `{ session: Session }` |
+| `switch-session` | `{ id: string }` | `{ session: Session }`（含完整 `messages`，UI 据此重建聊天区） |
+| `rename-session` | `{ id: string; title: string }` | `null` |
+| `delete-session` | `{ id: string }` | `null`（进行中 → `E_SESSION_IN_USE`；最后一个会话删除后自动新建） |
+
+```typescript
+interface SessionMeta { id: string; title: string; createdAt: number; updatedAt: number; messageCount: number; }
+interface Session extends SessionMeta { messages: ChatMessage[]; }
+```
+
+推送：`sessions-changed` → `{ sessions: SessionMeta[] }`（新建/改名/自动起标题后触发，UI 全量刷新列表）。
+会话持久化于 `<appDir>/sessions/<id>.json`，首轮对话结束自动起标题（≤12 字，可改名）。
+
+### 7.2 MCP 通道（invoke，v0.3）
+
+| 通道名 | 请求 payload | 返回 data |
+|---|---|---|
+| `list-mcp-servers` | — | `{ servers: McpServerStatus[]; config: Record<string, McpServerConfig> }` |
+| `set-mcp-config` | `{ config: Record<string, McpServerConfig> }` | `null`（全量替换 mcp.json 并同步连接） |
+| `toggle-mcp-server` | `{ name: string; enabled: boolean }` | `null`（不存在 → `E_MCP_NOT_FOUND`） |
+
+```typescript
+interface McpServerConfig {
+  command?: string; args?: string[]; env?: Record<string, string>;  // stdio 传输
+  url?: string;                                                     // Streamable HTTP 传输（与 command 二选一）
+  approval?: 'auto' | 'always' | 'never';   // auto（默认）= 按 annotations.readOnlyHint 免审批，其余需审批
+  enabled?: boolean;                        // 默认 true
+  tools?: Record<string, { requiresApproval?: boolean; permissions?: string[] }>;  // 按工具覆盖
+}
+interface McpServerStatus { name: string; state: 'connected'|'connecting'|'disconnected'|'error'|'disabled'; transport: 'stdio'|'http'; toolCount: number; error?: string; }
+```
+
+推送：`mcp-status-changed` → `{ servers: McpServerStatus[] }`。
+桥接规则：每个 MCP 工具注册为 `mcp.<server>.<工具名>`；断线自动指数退避重连；server 崩溃 → 工具错误回喂模型（自愈），不中断循环。配置文件 `<appDir>/mcp.json` 与 Claude Desktop 的 `mcpServers` 格式兼容。
+
+### 7.3 Provider 注册表（invoke，v0.2）
+
+| 通道名 | 请求 payload | 返回 data |
+|---|---|---|
+| `list-providers` | — | `{ providers: ProviderMeta[] }` |
+| `set-model-config` | `{ config: { provider; apiKey?; model?; baseUrl?; maxTokens? } }` | `null`（校验放宽为「provider 必须在注册表中」） |
+
+```typescript
+interface ProviderMeta { id: string; label: string; requiresBaseUrl: boolean; defaultBaseUrl?: string; defaultModel?: string; }
+```
+
+内置 id：`openai-compatible`（通用，需 baseUrl，Ollama/LM Studio/智谱/通义/月之暗面等即插）、`deepseek`、`openai`、`anthropic`。`maxTokens` 仅 Anthropic 消费（Messages API `max_tokens`）。
+
+### 7.4 插件设置与 registry 安装（invoke，v0.3 / 富插件协议 v2）
+
+| 通道名 | 请求 payload | 返回 data |
+|---|---|---|
+| `install-plugin-from-registry` | `{ name: string; registryUrl?: string }` | `{ plugin: PluginInfo }`（下载 zip → sha256 校验 → 标准安装） |
+| `get-plugin-settings` | `{ name: string }` | `{ schema: object \| null; values: object \| null }`（schema 来自 manifest.settings） |
+| `set-plugin-settings` | `{ name: string; values: object }` | `null`（落盘 `<appDir>/plugins/settings/<name>.json`，下次工具执行注入 `ctx.settings`） |

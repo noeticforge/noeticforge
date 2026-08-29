@@ -1,9 +1,9 @@
 {
   "name": "agent-base",
-  "version": "0.1.0",
-  "description": "桌面端 AI Agent 底座：Agent 循环引擎 + 插件加载器 + 多模型 Provider 适配层",
+  "version": "0.3.0",
+  "description": "开源桌面端 AI Agent 壳：Agent 循环引擎 + 插件/MCP 生态 + 多会话 + 审批治理",
   "type": "module",
-  "main": "dist/src/index.js",
+  "main": "dist/src/electron/main.js",
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
@@ -12,6 +12,7 @@
     "test:ipc": "node dist/scripts/ipc-selftest.js",
     "check:codes": "node scripts/check-error-codes.mjs",
     "live:check": "node dist/scripts/live-check.js",
+    "dist": "electron-builder",
     "electron": "electron dist/src/electron/main.js"
   },
   "engines": {
@@ -21,6 +22,7 @@
     "@types/adm-zip": "^0.5.8",
     "@types/node": "^24.0.0",
     "electron": "^44.0.0",
+    "electron-builder": "^26.15.3",
     "typescript": "^5.5.0"
   },
   "dependencies": {

@@ -24,9 +24,12 @@ const el = {
   apvOk: $('#apv-approve-btn'), apvNo: $('#apv-reject-btn'),
   pluginList: $('#plugin-list'), pluginEmpty: $('#plugin-empty'), pluginDir: $('#plugin-dir'), installBtn: $('#install-btn'),
   cfgProvider: $('#cfg-provider'), cfgKey: $('#cfg-apikey'), cfgModel: $('#cfg-model'), cfgUrl: $('#cfg-baseurl'), saveModel: $('#save-model-btn'),
+  providerOptions: $('#provider-options'),
+  sessList: $('#session-list'), sessEmpty: $('#session-empty'), sessNew: $('#session-new-btn'), chatTitle: $('#chat-title'),
+  mcpList: $('#mcp-list'),
   logList: $('#log-list'), logCount: $('#log-count'), logToggle: $('#log-toggle'), logBody: $('#log-body'),
 };
-const st = { busy: false, boxes: new Map(), tools: new Map(), pending: null };
+const st = { busy: false, boxes: new Map(), tools: new Map(), pending: null, sessions: [], currentSessionId: null };
 const OUT_LIMIT = 200, LOG_LIMIT = 300;
 
 /* ================= [1] 通用工具函数 ================= */
@@ -52,6 +55,17 @@ function h(tag, cls, text) {
 }
 const scrollBottom = () => { el.messages.scrollTop = el.messages.scrollHeight; };
 const autoGrow = () => { el.input.style.height = 'auto'; el.input.style.height = Math.min(el.input.scrollHeight, 160) + 'px'; };
+
+/** Markdown 渲染（vendor/marked + DOMPurify 消毒；缺失时退回纯文本） */
+function renderMarkdown(text) {
+  const plain = () => { const d = h('div', 'stream-content'); d.textContent = text; return d; };
+  if (typeof marked === 'undefined' || typeof DOMPurify === 'undefined') return plain();
+  try {
+    const d = h('div', 'stream-content md');
+    d.innerHTML = DOMPurify.sanitize(marked.parse(String(text ?? '')));
+    return d;
+  } catch (_e) { return plain(); }
+}
 
 /* ================= [2] Toast 提示（type: err|ok|info） ================= */
 function toast(text, type = 'err') {
@@ -129,19 +143,20 @@ function setBusy(busy) {
   el.thinking.classList.toggle('hidden', !busy);
   el.sendBtn.disabled = busy;
 }
-/** 发送入口：前端防抖 + 调 sendMessage */
+/** 发送入口：前端防抖 + 调 sendMessage（v0.2 起携带当前会话 id） */
 async function handleSend() {
   const content = el.input.value.trim();
   if (!content) return;
   if (st.busy) { toast(ERR_TEXT.E_LOOP_BUSY); return; }
   el.input.value = ''; autoGrow(); addUser(content); setBusy(true);
-  const r = await invoke(window.agentBase.sendMessage({ role: 'user', content }), '发送消息');
+  const r = await invoke(window.agentBase.sendMessage({ role: 'user', content, sessionId: st.currentSessionId }), '发送消息');
   if (!r.ok) { setBusy(false); return; }
   if (r.data && r.data.messageId) ensureBox(r.data.messageId);
 }
-/** message-chunk：delta 增量拼接，打流式打字机 */
+/** message-chunk：delta 增量拼接（只追加当前会话），打流式打字机 */
 function onChunk(p) {
   log('message-chunk', p);
+  if (!isCurrentSession(p)) return;
   const { messageId, delta } = p;
   if (!delta) return;
   const b = ensureBox(messageId);
@@ -149,9 +164,14 @@ function onChunk(p) {
   b.content.textContent += delta;
   scrollBottom();
 }
+/** 推送事件是否属于当前正在查看的会话（v0.2 多会话：非当前会话的事件只记日志） */
+function isCurrentSession(p) {
+  return !st.currentSessionId || !p.sessionId || p.sessionId === st.currentSessionId;
+}
 /** tool-started：插入“🔧 调用 name + 参数”小卡片 */
 function onToolStart(p) {
   log('tool-started', p);
+  if (!isCurrentSession(p)) return;
   const { messageId, toolCallId, name, arguments: args } = p;
   const card = h('div', 'tool-card tool-pending');
   card.dataset.toolCallId = toolCallId;
@@ -166,6 +186,7 @@ function onToolStart(p) {
 /** tool-result：绿=成功 / 红=失败，输出>200字截断可展开 */
 function onToolResult(p) {
   log('tool-result', p);
+  if (!isCurrentSession(p)) return;
   const { toolCallId, result } = p;
   const it = st.tools.get(toolCallId);
   if (!it) return;
@@ -177,6 +198,14 @@ function onToolResult(p) {
   const text = d.output !== undefined ? toText(d.output) : (d.error ? toText(d.error) : '');
   if (!text) return;
   it.full = text;
+  // render: 'markdown'（富插件协议 v2）→ 工具输出按 Markdown 渲染（DOMPurify 消毒）
+  if (d.render === 'markdown' && typeof marked !== 'undefined') {
+    const out = h('div', 'tool-output');
+    out.appendChild(renderMarkdown(text));
+    it.card.append(out);
+    scrollBottom();
+    return;
+  }
   const code = h('pre', null, trunc(text));
   const toggle = h('button', 'tool-toggle');
   if (text.length > OUT_LIMIT) {
@@ -192,13 +221,19 @@ function onToolResult(p) {
   it.card.append(out, toggle);
   scrollBottom();
 }
-/** loop-done：收起加载态，流式缺内容时用最终 content 兜底 */
+/** loop-done：收起加载态，流式内容渲染成 Markdown，缺内容时用最终 content 兜底 */
 function onLoopDone(p) {
   log('loop-done', p);
+  if (!isCurrentSession(p)) return;
   const { messageId, content, stopped } = p;
   const b = ensureBox(messageId);
   b.typing.classList.add('hidden');
-  if (content && !b.content.textContent) b.content.textContent = content;
+  const finalText = b.content.textContent || content || '';
+  if (finalText) {
+    const md = renderMarkdown(finalText);
+    b.content.replaceWith(md);
+    b.content = md;
+  }
   setBusy(false);
   if (stopped) toast('已停止生成', 'info');
   scrollBottom();
@@ -206,6 +241,7 @@ function onLoopDone(p) {
 /** loop-error：收忙碌态，聊天流内追加错误卡片 + toast */
 function onLoopErr(p) {
   log('loop-error', p);
+  if (!isCurrentSession(p)) return;
   const { messageId, error } = p;
   const e = error || {};
   setBusy(false);
@@ -221,8 +257,7 @@ function onLoopErr(p) {
 /** approval-required：工具名 + 参数 JSON 表格 + 批准/拒绝（拒绝可填原因） */
 function onApproval(p) {
   log('approval-required', p);
-  const { messageId, toolCallId, name, arguments: args, reason } = p;
-  st.pending = { messageId, toolCallId };
+  const { messageId, toolCallId, name, arguments: args, reason } = p;  st.pending = { messageId, toolCallId };
   el.apvName.textContent = name;
   el.apvReason.classList.toggle('hidden', !reason);
   el.apvReason.textContent = reason ? '原因：' + reason : '';
@@ -259,6 +294,140 @@ async function onReject() {
   setApprovalBusy(true);
   await invoke(window.agentBase.rejectTool({ messageId: r.messageId, toolCallId: r.toolCallId, reason: reason || undefined }), '拒绝工具');
   closeApproval();
+}
+
+/* ================= [5.5] 会话管理（v0.2） ================= */
+async function loadSessions() {
+  const r = await invoke(window.agentBase.listSessions(), '加载会话');
+  if (r.ok) renderSessions(r.data.sessions);
+  if (r.ok && !st.currentSessionId && r.data.sessions.length) {
+    await doSwitchSession(r.data.sessions[0].id, { silent: true });
+  }
+}
+function renderSessions(list) {
+  const arr = Array.isArray(list) ? list : [];
+  st.sessions = arr;
+  el.sessList.innerHTML = '';
+  el.sessEmpty.classList.toggle('hidden', arr.length > 0);
+  arr.forEach((s) => {
+    const item = h('div', 'session-item' + (s.id === st.currentSessionId ? ' active' : ''));
+    const name = h('span', 'session-name', s.title || '未命名会话');
+    name.title = s.title + ' · ' + (s.messageCount || 0) + ' 条消息';
+    const ops = h('div', 'session-ops');
+    const rn = h('button', 'btn-mini', '改');
+    const del = h('button', 'btn-mini', '删');
+    ops.append(rn, del);
+    item.append(name, ops);
+    el.sessList.appendChild(item);
+    item.addEventListener('click', () => doSwitchSession(s.id));
+    rn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const title = prompt('新的会话名称：', s.title || '');
+      if (title && title.trim()) await invoke(window.agentBase.renameSession({ id: s.id, title: title.trim() }), '重命名会话');
+    });
+    del.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (!confirm('确定删除会话「' + (s.title || s.id) + '」？历史不可恢复。')) return;
+      const r = await invoke(window.agentBase.deleteSession({ id: s.id }), '删除会话');
+      if (r.ok && st.currentSessionId === s.id) {
+        st.currentSessionId = null;
+        const rest = st.sessions.filter((x) => x.id !== s.id);
+        if (rest.length) await doSwitchSession(rest[0].id, { silent: true });
+        else { el.messages.innerHTML = ''; el.chatTitle.textContent = 'Agent Base'; }
+      }
+    });
+  });
+}
+/** 切换会话：拉全量历史重建聊天区（v0.2 会话隔离） */
+async function doSwitchSession(id, opts = {}) {
+  if (st.busy && !opts.silent) { toast(ERR_TEXT.E_LOOP_BUSY); return; }
+  const r = await invoke(window.agentBase.switchSession({ id }), '切换会话');
+  if (!r.ok) return;
+  st.currentSessionId = id;
+  el.chatTitle.textContent = r.data.session.title || 'Agent Base';
+  renderHistory(r.data.session.messages || []);
+  renderSessions(st.sessions);
+  if (!opts.silent) toast('已切换会话', 'info');
+}
+/** 从会话消息数组重建聊天区（含工具卡片历史） */
+function renderHistory(messages) {
+  el.messages.innerHTML = '';
+  st.boxes.clear(); st.tools.clear();
+  const toolOutput = new Map();
+  for (const m of messages) {
+    if (m.role === 'tool' && m.toolCallId) toolOutput.set(m.toolCallId, m.content);
+  }
+  let histIdx = 0;
+  for (const m of messages) {
+    if (m.role === 'user') { addUser(m.content); continue; }
+    if (m.role === 'assistant') {
+      const box = ensureBox('hist-' + (++histIdx));
+      box.typing.classList.add('hidden');
+      if (m.content) {
+        const md = renderMarkdown(m.content);
+        box.content.replaceWith(md);
+        box.content = md;
+      }
+      for (const call of m.toolCalls ?? []) {
+        const card = h('div', 'tool-card tool-pending');
+        const head = h('div', 'tool-head');
+        head.append('🔧 ', h('span', null, '调用 '), h('code', 'tool-name', call.name), h('span', 'tool-status', ''));
+        card.append(head, h('pre', 'tool-args', pretty(call.arguments)));
+        const out = toolOutput.get(call.id);
+        if (out !== undefined) {
+          card.classList.remove('tool-pending'); card.classList.add('tool-ok');
+          head.querySelector('.tool-status').textContent = '✓';
+          card.append(h('pre', 'tool-args', trunc(out)));
+        }
+        box.tools.appendChild(card);
+      }
+    }
+  }
+  scrollBottom();
+}
+/** sessions-changed：会话列表有变（新建/改名/自动起标题）→ 全量刷新 */
+function onSessionsChanged(p) {
+  renderSessions(p?.sessions ?? []);
+}
+
+/* ================= [5.6] MCP 状态（v0.3） ================= */
+async function loadMcp() {
+  const r = await invoke(window.agentBase.listMcpServers(), '加载 MCP 状态');
+  if (r.ok) renderMcp(r.data.servers || []);
+}
+function renderMcp(servers) {
+  el.mcpList.innerHTML = '';
+  if (!servers.length) {
+    el.mcpList.appendChild(h('div', 'mcp-empty', 'MCP：未配置（编辑项目根目录 mcp.json 后重启）'));
+    return;
+  }
+  for (const s of servers) {
+    const dot = h('span', 'mcp-dot ' + (s.state || ''));
+    dot.title = (s.error ? s.error + ' · ' : '') + 'state=' + s.state;
+    const name = h('span', 'mcp-name', s.name);
+    const tools = h('span', 'mcp-tools', s.state === 'connected' ? (s.toolCount + ' 工具') : s.state);
+    el.mcpList.appendChild(h('div', 'mcp-item')).append(dot, name, tools);
+  }
+}
+function onMcpStatus(p) {
+  log('mcp-status-changed', p);
+  // 推送可能是单个 server 的增量，也可能是全量：合并进已有列表
+  const incoming = Array.isArray(p?.servers) ? p.servers : [];
+  if (incoming.length && incoming[0].toolCount !== undefined && p.full !== false) renderMcp(incoming);
+  else loadMcp();
+}
+
+/* ================= [5.7] Provider 动态列表（v0.2） ================= */
+async function loadProviders() {
+  const r = await invoke(window.agentBase.listProviders(), '加载 Provider 列表');
+  if (!r.ok) return;
+  el.providerOptions.innerHTML = '';
+  for (const p of r.data.providers) {
+    const opt = document.createElement('option');
+    opt.value = p.id;
+    opt.label = p.label + (p.requiresBaseUrl ? '（需填 Base URL）' : '');
+    el.providerOptions.appendChild(opt);
+  }
 }
 
 /* ================= [6] 插件管理 ================= */
@@ -336,6 +505,9 @@ function subscribe() {
     toast('未检测到 window.agentBase，请通过 Electron 渲染进程打开本页面');
     return false;
   }
+  if (api.protocolVersion !== 2) {
+    toast('UI 与底座协议版本不一致（预期 2），可能出现字段缺失', 'info');
+  }
   api.on('message-chunk', onChunk);
   api.on('tool-started', onToolStart);
   api.on('tool-result', onToolResult);
@@ -343,6 +515,8 @@ function subscribe() {
   api.on('loop-done', onLoopDone);
   api.on('loop-error', onLoopErr);
   api.on('plugins-changed', onPluginsChanged);
+  api.on('sessions-changed', onSessionsChanged);
+  api.on('mcp-status-changed', onMcpStatus);
   return true;
 }
 function init() {
@@ -355,6 +529,10 @@ function init() {
   el.installBtn.addEventListener('click', handleInstall);
   el.pluginDir.addEventListener('keydown', (e) => { if (e.key === 'Enter') handleInstall(); });
   el.saveModel.addEventListener('click', handleSaveModel);
+  el.sessNew.addEventListener('click', async () => {
+    const r = await invoke(window.agentBase.createSession({}), '新建会话');
+    if (r.ok && r.data.session) await doSwitchSession(r.data.session.id, { silent: true });
+  });
   el.logToggle.addEventListener('click', () => {
     const folded = el.logBody.classList.toggle('collapsed');
     const arrow = el.logToggle.querySelector('.log-arrow');
@@ -362,7 +540,10 @@ function init() {
   });
   if (!subscribe()) return;
   loadPlugins();
-  toast('测试台加载完成，可在下方输入框开始对话', 'info');
+  loadSessions();
+  loadProviders();
+  loadMcp();
+  toast('加载完成，开始对话吧', 'info');
   el.input.focus();
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

@@ -78,6 +78,11 @@ export interface ToolResult {
   output: string;
   /** 预置错误码（插件也可用自定义值）：tool-not-found / rejected-by-user / permission-denied / invalid-arguments / tool-crashed */
   error?: string;
+  /**
+   * UI 渲染提示（富插件协议 v2）：'markdown' | 'code' | 'diff' | 'table'。
+   * 只影响 UI 展示方式，不影响喂给模型的内容；不开放任意 HTML（UI 端消毒）。
+   */
+  render?: string;
 }
 
 /** 工具执行时由底座注入的上下文 */

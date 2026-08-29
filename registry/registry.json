@@ -1,0 +1,6 @@
+{
+  "$schema": "./registry.schema.md",
+  "name": "agent-base-plugin-registry",
+  "version": 1,
+  "plugins": []
+}

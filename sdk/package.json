@@ -1,0 +1,19 @@
+{
+  "name": "@agent-base/sdk",
+  "version": "0.1.0",
+  "description": "agent-base 插件开发 SDK：类型定义 + definePlugin 辅助函数",
+  "type": "module",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "README.md"
+  ],
+  "keywords": ["agent-base", "plugin", "sdk", "mcp", "ai-agent"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/agent-base/agent-base"
+  }
+}

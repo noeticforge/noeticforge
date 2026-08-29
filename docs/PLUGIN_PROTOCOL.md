@@ -537,3 +537,60 @@ interface Plugin {
   tools: AgentTool[];
 }
 ```
+---
+
+## 7. 富插件协议 v2 增补（v0.3 起实现）
+
+> v1 协议（工具 + 权限 + 审批）全部保持不变；以下是可选的新增能力，全部向后兼容。
+> 插件在 manifest 中声明 `protocolVersion`；底座支持版本见 `src/plugins/loader.ts` 的
+> `SUPPORTED_PLUGIN_PROTOCOL_VERSION`，声明了更高版本的插件会被拒绝加载（报 `E_PLUGIN_VALIDATION_FAILED`）。
+
+### 7.1 manifest 新增字段
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `protocolVersion` | `number` | ❌ | 插件协议版本，当前 `1`；缺省视为 1。必须是正整数，高于底座支持版本 → 加载失败 |
+| `settings` | `object` | ❌ | 插件设置页的 JSON Schema（OpenAI 风格）。UI 据此生成设置表单；用户保存的值在每次 `execute` 时注入 `ctx.settings` |
+
+### 7.2 生命周期钩子
+
+插件导出对象可增选实现两个异步钩子（与 `tools` 并列）：
+
+- `onInstall?: () => Promise<void>`——安装（含热更新）注册成功后回调；抛错不影响安装主流程；
+- `onUninstall?: () => Promise<void>`——注销前回调；抛错不影响卸载主流程。
+
+用途：初始化资源、清理定时器/临时文件。**禁止**在钩子里做审批绕过或权限提升类操作。
+
+### 7.3 ToolResult.render 渲染提示
+
+`ToolResult` 增加可选字段 `render?: string`，合法值：`'markdown' | 'code' | 'diff' | 'table'`。
+
+- 仅影响 **UI 展示方式**，不影响喂给 LLM 的 `output` 内容；
+- UI 端对 markdown 渲染一律经 DOMPurify 消毒，**不开放任意 HTML**；
+- 缺省时 UI 按纯文本 `<pre>` 展示（与 v1 行为一致）。
+
+### 7.4 设置注入示例
+
+```json
+// manifest.json（节选）
+{
+  "protocolVersion": 1,
+  "settings": {
+    "type": "object",
+    "properties": { "greeting": { "type": "string", "default": "你好" } }
+  }
+}
+```
+
+```javascript
+// execute 内
+const greeting = ctx.settings?.greeting ?? '你好';
+return { ok: true, output: `**${greeting}，${args.name}！**`, render: 'markdown' };
+```
+
+设置值由用户在 UI（`get/set-plugin-settings` 通道）配置，落盘于 `plugins/settings/<name>.json`，属**用户数据**——插件不得直接读写该文件，只能经 `ctx.settings` 获取。
+
+### 7.5 插件注册表
+
+官方注册表见仓库 `registry/`（`registry.json` 索引 + PR 投稿 + sha256 校验）。
+应用内经 `install-plugin-from-registry` 通道安装；信任边界如实说明见 `registry/README.md`。
