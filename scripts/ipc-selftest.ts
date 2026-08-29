@@ -489,8 +489,13 @@ async function main(): Promise<void> {
   await service8.shutdown();
 
   // ---------- 13. 回归：排队多模态保真（H1） + 删会话守卫（H2） ----------
+  // 注意三条应答的归属：resp1 挂起审批（第一轮）、resp2 'hold-done' 结束第一轮、
+  // resp3 'queued-ok' 只能由排队消息 drain 后的**第二轮**产出——
+  // 否则 waitFor 会在 drain 前被第一轮的 loop-done 提前满足，lastUserIsArray 断言变成时序彩票
+  // （Node 24 调度时序变化让该竞态在 CI 上必现，Node 20/22 只是碰巧没炸）
   const cap3 = new CapturingProvider2([
     { content: '', toolCalls: [{ id: 'hold1', name: 'write-file.write', arguments: { path: 'held.txt', content: 'x' } }], finishReason: 'tool_calls' },
+    { content: 'hold-done', toolCalls: [], finishReason: 'stop' },
     { content: 'queued-ok', toolCalls: [], finishReason: 'stop' },
   ]);
   const service9 = new AgentService({ appDir, pushEvent: push, initialProvider: cap3 as unknown as LLMProvider, contextTokenBudget: 30_000 });
