@@ -5,12 +5,19 @@
 ## [未发布]
 
 ### 新增
-- **液态玻璃 UI**：无边框透明窗口 + 自绘标题栏（拖拽区 / 最小化 / 最大化 / 关闭）；玻璃壳体 + 环境光壁纸 + backdrop-filter 玻璃面板；最大化时玻璃板自动去圆角铺满
-- 窗口外壳控制 API（`window.agentWindow`，独立于 agent IPC 协议）与 `scripts/window-selftest.ts` 自测（`npm run test:window`，7 项断言）
+- **AGENTS.md 分层提示**：`~/.agent-base/AGENTS.md`（全局）+ 项目根 `AGENTS.md`（项目），自动合并进系统提示，每轮发送时读取、改文件即生效
+- **消息排队**：会话循环进行中继续发送不再拒绝，自动排队（消息带"已排队"徽标），循环结束后按序续发；stop 会清空队列
+- **上下文压缩**：超过 token 预算时把较旧轮次经一次模型调用压成要点摘要（磁盘历史保持全量），摘要失败回退整轮截断
+- **官方插件 shell-exec**：执行 shell 命令（超时控制 + 输出截断 + `requiresApproval` 强制审批）
+- **官方插件 web-fetch**：抓取 HTTP/HTTPS 网页与只读接口（20s 超时、二进制跳过、截断保护）
+- **写文件审批 diff 预览**：`write-file.write` 审批时展示行级差异（LCS diff，+N/−N 统计，新文件显示行数徽标）；新增 `preview-file` 通道
+- **anthropic-compatible 供应商**：任意 Anthropic Messages 格式端点即插（自建网关场景）
+- 工具行摘要：多行参数显示 `[N 行]` 行数而非内容
 
 ### 规划中（见 docs/DEVELOPMENT_PLAN.md）
-- electron-builder 首次打包发布与自动更新（配置已备）
-- 插件受控执行 API / utilityProcess 进程池；插件签名与信任分级
+- 真·推理力度（provider reasoning effort 参数透传）
+- 子代理编排；@ 上下文引用与附件；内置终端面板
+- electron-builder 首次发布签名与自动更新
 
 ## [0.3.0] - 2026-08
 

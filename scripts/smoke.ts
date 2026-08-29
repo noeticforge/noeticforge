@@ -26,9 +26,9 @@ async function main(): Promise<void> {
   // 1. 插件加载
   const registry = new ToolRegistry();
   const report = await loadPluginsFromRoot(path.resolve('plugins'), registry);
-  check(report.loaded.includes('read-file') && report.loaded.includes('write-file'), '两个内置插件加载成功');
+  check(report.loaded.length === 4 && ['read-file','write-file','shell-exec','web-fetch'].every((n) => report.loaded.includes(n)), '4 个内置插件全部加载成功');
   check(report.failed.length === 0, `无插件加载失败${report.failed.length ? `: ${JSON.stringify(report.failed)}` : ''}`);
-  check(registry.definitions().length === 2, '工具注册表登记了 2 个工具');
+  check(registry.definitions().length === 4, '工具注册表登记了 4 个工具');
 
   // 2. 脚本化模型：读 README → 写文件(批准) → 写文件(拒绝) → 收尾
   const mock = new MockProvider([

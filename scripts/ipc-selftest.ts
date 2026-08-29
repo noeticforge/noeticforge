@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { AgentService, type PushChannel, type IpcResult } from '../src/electron/agent-service.js';
 import { MockProvider } from '../src/providers/mock.js';
+import type { LLMProvider } from '../src/types.js';
 
 /**
  * IPC 自测：不用 Electron、不用网络、不用 API Key。
@@ -67,7 +68,7 @@ async function main(): Promise<void> {
   ]);
   const service = new AgentService({ appDir, pushEvent: push, initialProvider: mock });
   await service.init();
-  check(events.some((e) => e.channel === 'plugins-changed' && e.payload.plugins.length === 2), 'init 推送 plugins-changed（2 个内置插件）');
+  check(events.some((e) => e.channel === 'plugins-changed' && e.payload.plugins.length === 4), 'init 推送 plugins-changed（4 个内置插件）');
 
   // 非法消息
   const bad = service.sendMessage({ message: { role: 'assistant', content: 'x' } as any });
@@ -137,7 +138,7 @@ async function main(): Promise<void> {
   const mid2 = (send2 as { ok: true; data: { messageId: string } }).data.messageId;
   await waitFor(() => events.some((e) => e.channel === 'approval-required' && e.payload.messageId === mid2), 5000, 'mid2 审批');
   const busy = service2.sendMessage({ message: { role: 'user', content: 'busy?' } });
-  check(busy.ok === false && busy.error.code === 'E_LOOP_BUSY', '循环进行中 → E_LOOP_BUSY');
+  check(busy.ok === true && (busy.data as { queued?: boolean }).queued === true, '循环进行中发送 → 自动排队（queued:true）');
   service2.stop();
   await waitFor(() => events.some((e) => e.channel === 'loop-done' && e.payload.messageId === mid2), 5000, 'mid2 loop-done');
   const stopped = events.find((e) => e.channel === 'loop-done' && e.payload.messageId === mid2)!;
@@ -148,7 +149,7 @@ async function main(): Promise<void> {
 
   // ---------- 4. 插件热装卸 ----------
   const list = service.listPlugins();
-  check(list.ok === true && list.ok && list.data.plugins.length === 2, 'list-plugins 返回 2 个插件');
+  check(list.ok === true && list.ok && list.data.plugins.length === 4, 'list-plugins 返回 4 个插件');
 
   // 造一个临时插件（echo 工具，无权限要求）
   const tmpPluginDir = path.join(appDir, 'incoming-echo');
@@ -190,7 +191,7 @@ async function main(): Promise<void> {
   const provs = service.listProviders();
   check(
     provs.ok && ['openai-compatible', 'deepseek', 'openai', 'anthropic'].every((id) => provs.data.providers.some((p) => p.id === id)),
-    'list-providers 返回 4 个内置 provider（含通用 openai-compatible）',
+    'list-providers 返回 5 个内置 provider（含通用 openai-compatible / anthropic-compatible）',
   );
   const noBase = await service.setModelConfig({ config: { provider: 'openai-compatible', apiKey: 'x' } });
   check(noBase.ok === false && noBase.error.code === 'E_INVALID_CONFIG', 'openai-compatible 缺 baseUrl → E_INVALID_CONFIG');
@@ -315,6 +316,75 @@ async function main(): Promise<void> {
   check(rekey.ok === true, '同 provider 切模型不重填 apiKey → 复用已存 Key');
   const crossNoKey = await service.setModelConfig({ config: { provider: 'anthropic' } });
   check(crossNoKey.ok === false && crossNoKey.error.code === 'E_INVALID_CONFIG', '跨 provider 且无 Key → E_INVALID_CONFIG');
+
+  // ---------- 11. AGENTS.md 分层 / 消息排队续发 / 上下文压缩 / shell-exec 插件（v0.3） ----------
+  await writeFile(path.join(appDir, 'AGENTS.md'), 'AGENTS 测试标记：始终用中文回答。');
+
+  class CapturingProvider {
+    readonly id = 'mock';
+    calls = 0;
+    lastSystem: string | null = null;
+    lastFirstUser: string | null = null;
+    private mock: MockProvider;
+    constructor(responses: ConstructorParameters<typeof MockProvider>[0]) { this.mock = new MockProvider(responses); }
+    async chat(messages: any[], tools: any, options: any) {
+      this.calls += 1;
+      this.lastSystem = messages[0]?.content ?? null;
+      this.lastFirstUser = messages.find((m: any) => m.role === 'user')?.content ?? null;
+      return this.mock.chat(messages, tools, options);
+    }
+  }
+  const cap = new CapturingProvider([
+    { content: 'first-ok', toolCalls: [], finishReason: 'stop' },
+    { content: 'second-ok', toolCalls: [], finishReason: 'stop' },
+    { content: '摘要：用户曾发送超长消息。', toolCalls: [], finishReason: 'stop' },
+    { content: 'third-ok', toolCalls: [], finishReason: 'stop' },
+  ]);
+  const service6 = new AgentService({ appDir, pushEvent: push, initialProvider: cap as unknown as LLMProvider, contextTokenBudget: 3000, maxIterations: 5 });
+  await service6.init();
+  await service6.createSession({ title: '压缩测试' }); // 干净会话，避免复用前面章节的历史
+  const s6a = service6.sendMessage({ message: { role: 'user', content: 'A'.repeat(20_000) } });
+  check(s6a.ok === true, '首条（超长）消息正常受理');
+  const s6b = service6.sendMessage({ message: { role: 'user', content: '第二条消息' } });
+  check(s6b.ok === true && (s6b.data as { queued?: boolean }).queued === true, '循环进行中发送第二条 → 排队');
+  await waitFor(
+    () => events.filter((e) => e.channel === 'loop-done' && e.payload.content === 'second-ok').length === 1,
+    10_000,
+    '排队第二条完成',
+  );
+  const s6c = service6.sendMessage({ message: { role: 'user', content: '第三条消息' } });
+  check(s6c.ok === true, '第三条消息正常受理');
+  await waitFor(
+    () => events.some((e) => e.channel === 'loop-done' && e.payload.content === 'third-ok'),
+    10_000,
+    '第三条完成（含压缩轮）',
+  );
+  check(cap.calls === 4, `模型调用 4 次（首条/次条/压缩摘要/第三条），实际 ${cap.calls}`);
+  check((cap.lastSystem ?? '').includes('AGENTS 测试标记'), '系统提示包含项目 AGENTS.md 内容');
+  check((cap.lastFirstUser ?? '').startsWith('【历史摘要】'), '第三轮触发上下文压缩（首轮超预算被摘要）');
+  const sess6 = unwrap(await service6.switchSession({ id: unwrap(service6.listSessions()).sessions[0].id })).session;
+  check(
+    sess6.messages.length === 6 && (sess6.messages[0].content as string).length === 20_000,
+    '磁盘历史保持全量（压缩只影响发给模型的内容）',
+  );
+  await service6.shutdown();
+
+  // shell-exec 插件真实执行（含审批）
+  const mock7 = new MockProvider([
+    { content: '', toolCalls: [{ id: 'sh1', name: 'shell-exec.run', arguments: { command: 'echo hello-agent-base' } }], finishReason: 'tool_calls' },
+    { content: 'shell 完成', toolCalls: [], finishReason: 'stop' },
+  ]);
+  const service7 = new AgentService({ appDir, pushEvent: push, initialProvider: mock7 });
+  await service7.init();
+  const send7 = service7.sendMessage({ message: { role: 'user', content: '跑个命令' } });
+  const mid7 = (send7 as { ok: true; data: { messageId: string } }).data.messageId;
+  await waitFor(() => events.some((e) => e.channel === 'approval-required' && e.payload.toolCallId === 'sh1'), 8000, 'sh1 审批');
+  await service7.approveTool({ messageId: mid7, toolCallId: 'sh1' });
+  await waitFor(() => events.some((e) => e.channel === 'tool-result' && e.payload.toolCallId === 'sh1'), 15_000, 'sh1 结果');
+  const shRes = events.find((e) => e.channel === 'tool-result' && e.payload.toolCallId === 'sh1')!;
+  check(shRes.payload.result.ok === true && shRes.payload.result.output.includes('hello-agent-base'), 'shell-exec 插件经批准真实执行命令');
+  await waitFor(() => events.some((e) => e.channel === 'loop-done' && e.payload.messageId === mid7), 10_000, 'mid7 loop-done');
+  await service7.shutdown();
 
   await rm(appDir, { recursive: true, force: true });
   console.log('\nIPC 自测全部通过 🎉');

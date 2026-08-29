@@ -28,7 +28,7 @@ src/
     └── preload.ts            contextBridge 暴露 window.agentBase（UI 唯一入口）
 
 renderer/                     桌面 UI（会话侧栏/流式聊天/Markdown/审批弹窗/插件与 MCP 管理/模型配置）
-plugins/builtin/              内置插件（read-file / write-file，审批钩子演示）
+plugins/builtin/              内置插件：read-file / write-file / shell-exec（命令执行，强制审批）/ web-fetch（网页抓取）
 plugins/user/                 用户插件安装位置        plugins/settings/ 插件设置值
 sdk/                          @agent-base/sdk：插件作者的类型与 definePlugin
 templates/plugin-basic/       插件模板（5 分钟出第一个插件）
@@ -57,6 +57,16 @@ npm run live:check -- --tools # 加测工具调用解析
 # 或终端直聊
 cp config.example.json config.json   # 填入 apiKey
 npm run cli
+
+# 打包 Windows 应用（win-unpacked 目录，NSIS 安装包打 tag 后由 CI 发布）
+npm run dist
+
+## AGENTS.md（自定义系统提示）
+
+底座提示词分层可定制，改文件即生效、无需重启：
+
+- `~/.agent-base/AGENTS.md` —— 全局说明（所有项目生效）
+- 项目根 `AGENTS.md` —— 项目说明（约定、代码规范、常用命令等）
 ```
 
 ## 换模型 = 改配置（或 UI 里点一下）

@@ -83,6 +83,7 @@ app.whenReady().then(async () => {
   handle('set-agent-policy', (req) => service.setAgentPolicy(req));
   handle('get-app-info', () => service.getAppInfo());
   handle('read-audit', (req) => service.readAudit(req));
+  handle('preview-file', (req) => service.previewFile(req));
 
   await service.init();
   createWindow();

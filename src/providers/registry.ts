@@ -76,6 +76,22 @@ register(
   }),
 );
 
+register(
+  'anthropic-compatible',
+  { id: 'anthropic-compatible', label: 'Anthropic 兼容（自定义 baseUrl）', requiresBaseUrl: true },
+  (cfg) => {
+    if (!cfg.baseUrl) {
+      throw new Error('provider "anthropic-compatible" 需要配置 baseUrl（例如自建 Anthropic 格式网关）');
+    }
+    return new AnthropicProvider({
+      apiKey: cfg.apiKey!,
+      model: cfg.model ?? 'default',
+      baseUrl: cfg.baseUrl,
+      maxTokens: cfg.maxTokens,
+    });
+  },
+);
+
 export function registerProviderFactory(id: string, meta: ProviderMeta, factory: ProviderFactory): void {
   if (factories.has(id)) {
     throw new Error(`Provider 重复注册: ${id}`);

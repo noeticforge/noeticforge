@@ -36,7 +36,7 @@ const el = {
   apvModal: $('#approval-modal'), apvName: $('#apv-tool-name'), apvReason: $('#apv-reason'),
   apvReasonInput: $('#apv-reason-input'), apvTable: $('#apv-args-table'),
   apvTBody: $('#apv-args-table').querySelector('tbody'), apvRaw: $('#apv-args-raw'),
-  apvOk: $('#apv-approve-btn'), apvNo: $('#apv-reject-btn'),
+  apvOk: $('#apv-approve-btn'), apvNo: $('#apv-reject-btn'), apvDiff: $('#apv-diff'),
   // 右侧面板
   rightPanel: $('#right-panel'), rpClose: $('#rp-close'), rpEvents: $('#rp-events'),
   rpAudit: $('#rp-audit'), rpAuditList: $('#rp-audit-list'), rpAuditMeta: $('#rp-audit-meta'),
@@ -80,7 +80,12 @@ function argsSummary(args) {
     const o = typeof args === 'string' ? JSON.parse(args) : args;
     const keys = o && typeof o === 'object' ? Object.keys(o) : [];
     if (!keys.length) return '';
-    return keys.slice(0, 2).map((k) => `${k}=${trunc(String(o[k]).replace(/\s+/g, ' '), 24)}`).join('  ');
+    return keys.slice(0, 2).map((k) => {
+      const v = o[k];
+      // 多行字符串（如写文件的 content）显示行数而非内容
+      if (typeof v === 'string' && v.includes('\n')) return `${k}=[${v.split('\n').length} 行]`;
+      return `${k}=${trunc(String(v).replace(/\s+/g, ' '), 24)}`;
+    }).join('  ');
   } catch (_e) { return trunc(String(args), 40); }
 }
 function h(tag, cls, text) {
@@ -296,12 +301,15 @@ function ensureMsgCol() {
   }
   return msgCol;
 }
-function addUserBlock(content) {
+function addUserBlock(content, opts = {}) {
   ensureMsgCol();
-  const block = h('div', 'msg-block-user', content);
+  const block = h('div', 'msg-block-user');
+  block.appendChild(document.createTextNode(content));
+  if (opts.queuedBadge) block.appendChild(h('span', 'queued-badge', '已排队'));
   msgCol.appendChild(block);
   msgCol.appendChild(h('div', 'msg-gap'));
   scrollBottom();
+  return block;
 }
 /** 助手正文块（流式追加；loop-done 后转 Markdown） */
 function ensureAssistantBlock(messageId) {
@@ -440,12 +448,18 @@ async function handleSend() {
   if (st.busy) { toast(ERR_TEXT.E_LOOP_BUSY); return; }
   if (!st.currentSessionId) { toast('请先新建或选择一个会话'); return; }
   el.input.value = ''; autoGrow();
-  addUserBlock(content);
+  addUserBlock(content, { queuedPending: true });
   setBusy(true);
   startThink();
   showStatusCard();
   const r = await invoke(window.agentBase.sendMessage({ role: 'user', content, sessionId: st.currentSessionId }), '发送消息');
   if (!r.ok) { setBusy(false); stopThink(false); hideStatusCard(); return; }
+  // 排队受理：把"已排队"徽标挂到刚发的用户消息上（真正入列）
+  if (r.data?.queued) {
+    const blocks = msgCol.querySelectorAll('.msg-block-user');
+    const last = blocks[blocks.length - 1];
+    if (last && !last.querySelector('.queued-badge')) last.appendChild(h('span', 'queued-badge', '已排队'));
+  }
 }
 function isCurrentSession(p) {
   return !st.currentSessionId || !p.sessionId || p.sessionId === st.currentSessionId;
@@ -528,6 +542,76 @@ function onApproval(p) {
   }
   el.apvModal.classList.remove('hidden');
   el.apvOk.disabled = false; el.apvNo.disabled = false;
+  renderApprovalDiff(name, parsed);
+}
+/** 写文件审批的 diff 预览：读取现有内容 → 行级差异（新文件显示行数徽标） */
+async function renderApprovalDiff(name, parsedArgs) {
+  const box = el.apvDiff = el.apvDiff || $('#apv-diff');
+  box.classList.add('hidden');
+  box.innerHTML = '';
+  if (name !== 'write-file.write' || !window.agentBase?.previewFile) return;
+  const targetPath = parsedArgs && typeof parsedArgs === 'object' ? String(parsedArgs.path ?? '') : '';
+  if (!targetPath) return;
+  const r = await invoke(window.agentBase.previewFile({ path: targetPath }), '读取文件预览');
+  if (!r.ok) return;
+  const newContent = typeof parsedArgs.content === 'string' ? parsedArgs.content : '';
+  const newLines = newContent.split('\n');
+  const head = h('div', 'apv-diff-head');
+  if (!r.data.exists) {
+    head.append(h('span', 'diff-new', `新文件`), h('span', null, targetPath), h('span', 'diff-stat-add', `+${newLines.length} 行`));
+    box.append(head);
+    const body = h('div', 'apv-diff-body');
+    newLines.slice(0, 200).forEach((tx) => body.appendChild(diffRow('add', tx, '')));
+    if (newLines.length > 200) body.appendChild(h('div', 'diff-more', `…其余 ${newLines.length - 200} 行`));
+    box.appendChild(body);
+    box.classList.remove('hidden');
+    return;
+  }
+  const oldLines = r.data.content.split('\n');
+  const diff = lineDiff(oldLines, newLines);
+  if (!diff) return; // 文件过大，退回纯参数表
+  const addCount = diff.filter((d) => d[0] === 'add').length;
+  const delCount = diff.filter((d) => d[0] === 'del').length;
+  head.append(h('span', null, targetPath), h('span', 'diff-stat-add', `+${addCount}`), h('span', 'diff-stat-del', `−${delCount}`));
+  box.append(head);
+  const body = h('div', 'apv-diff-body');
+  const shown = diff.filter((d) => d[0] !== 'ctx' || true);
+  let ctxRun = 0;
+  const renderRows = shown.slice(0, 400);
+  renderRows.forEach(([kind, tx], idx) => {
+    body.appendChild(diffRow(kind, tx, String(kind === 'add' ? oldLines.length + idx : idx + 1)));
+  });
+  if (shown.length > 400) body.appendChild(h('div', 'diff-more', `…其余 ${shown.length - 400} 行`));
+  box.appendChild(body);
+  box.classList.remove('hidden');
+}
+function diffRow(kind, text, lineNo) {
+  const row = h('div', 'dl ' + kind);
+  row.appendChild(h('span', 'no', lineNo));
+  row.appendChild(h('span', 'sign', kind === 'add' ? '+' : kind === 'del' ? '−' : ' '));
+  row.appendChild(h('span', 'tx', text.length > 500 ? text.slice(0, 500) + '…' : text));
+  return row;
+}
+/** 简单 LCS 行级 diff；规模超限返回 null（避免 O(n·m) 爆内存） */
+function lineDiff(oldLines, newLines) {
+  const n = oldLines.length, m = newLines.length;
+  if (n * m > 400_000) return null;
+  const dp = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      dp[i][j] = oldLines[i] === newLines[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+  const out = [];
+  let i = 0, j = 0;
+  while (i < n && j < m) {
+    if (oldLines[i] === newLines[j]) { out.push(['ctx', oldLines[i]]); i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) { out.push(['del', oldLines[i]]); i++; }
+    else { out.push(['add', newLines[j]]); j++; }
+  }
+  while (i < n) out.push(['del', oldLines[i++]]);
+  while (j < m) out.push(['add', newLines[j++]]);
+  return out;
 }
 async function onApprove() {
   const r = st.pending;

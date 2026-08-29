@@ -36,6 +36,7 @@ const INVOKE_CHANNELS = [
   'set-agent-policy',
   'get-app-info',
   'read-audit',
+  'preview-file',
 ] as const;
 
 const PUSH_CHANNELS = [
@@ -112,6 +113,7 @@ const agentBase = {
     invoke('set-agent-policy', req),
   getAppInfo: () => invoke('get-app-info'),
   readAudit: (req?: { lines?: number }) => invoke('read-audit', req),
+  previewFile: (req: { path: string }) => invoke('preview-file', req),
 
   // ---- 订阅（主进程 → UI 推送）----
   on,

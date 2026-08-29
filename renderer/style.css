@@ -193,6 +193,10 @@ body.theme-dark #sidebar{background:rgba(10,13,26,.42)}
 #messages{flex:1;overflow-y:auto;padding:20px 0 8px}
 .msg-col{max-width:840px;margin:0 auto;padding:0 36px;display:flex;flex-direction:column;gap:14px}
 .msg-block-user{font-size:14px;font-weight:570;white-space:pre-wrap;word-break:break-word;user-select:text;padding:2px 0}
+.queued-badge{
+  display:inline-block;margin-left:8px;font-size:10.5px;font-weight:400;color:var(--txt-dim);
+  border:1px solid var(--pill-border);border-radius:8px;padding:0 7px;vertical-align:1px;
+}
 .msg-block-assistant{user-select:text}
 .msg-gap{height:2px}
 
@@ -463,6 +467,23 @@ body.theme-dark .modal-mask{background:rgba(3,5,12,.5)}
 .arg-key{color:var(--accent);font-family:var(--mono)}
 .arg-val{font-family:var(--mono);white-space:pre-wrap}
 .apv-raw{font-family:var(--mono);font-size:12px;background:var(--code-bg);border:1px solid var(--code-border);border-radius:8px;padding:8px;margin:6px 0;word-break:break-all}
+
+/* 写文件 diff 预览 */
+.apv-diff{margin:8px 0;border:1px solid var(--code-border);border-radius:8px;overflow:hidden}
+.apv-diff-head{display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--field-bg);font-family:var(--mono);font-size:11.5px;color:var(--txt-dim)}
+.diff-stat-add{color:var(--ok);font-weight:600}
+.diff-stat-del{color:var(--err);font-weight:600}
+.diff-new{color:var(--ok);font-weight:600}
+.apv-diff-body{max-height:220px;overflow:auto;font-family:var(--mono);font-size:11px;line-height:1.5}
+.dl{display:flex;white-space:pre;user-select:text}
+.dl .no{flex:0 0 34px;text-align:right;padding-right:8px;color:var(--txt-faint);user-select:none}
+.dl.add{background:rgba(16,165,107,.13)}
+.dl.del{background:rgba(229,72,77,.12)}
+.dl.add .sign{color:var(--ok)}
+.dl.del .sign{color:var(--err)}
+.dl .sign{flex:0 0 12px}
+.dl .tx{flex:1;word-break:break-all;white-space:pre-wrap}
+.diff-more{padding:4px 10px;color:var(--txt-faint);font-size:10.5px}
 .reject-reason{display:block;font-size:12px;color:var(--txt-dim)}
 #apv-reason-input{width:100%;margin-top:4px;background:var(--field-bg);border:1px solid var(--field-border);border-radius:var(--r-sm);color:var(--txt);padding:8px 11px;outline:none}
 .modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:16px}

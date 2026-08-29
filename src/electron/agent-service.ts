@@ -1,5 +1,6 @@
 import { cp, rm, readFile, writeFile, stat, appendFile, mkdir } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { mkdtemp, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -17,6 +18,7 @@ import type {
 import { ToolRegistry } from '../core/registry.js';
 import { runLoop } from '../core/loop.js';
 import { AgentLoopError } from '../core/errors.js';
+import { estimateTokens, trimHistory } from '../core/context.js';
 import { SessionStore, type Session } from '../core/session-store.js';
 import { loadPluginFromDir, loadPluginsFromRoot } from '../plugins/loader.js';
 import { createProvider, type ProviderConfig } from '../providers/provider.js';
@@ -179,6 +181,8 @@ export class AgentService {
   private readonly pluginsInUse = new Set<string>();
   /** 插件设置缓存（key: 插件名） */
   private readonly settingsCache = new Map<string, Record<string, unknown>>();
+  /** 每会话的消息队列：循环进行中收到的消息排队，结束后自动续发 */
+  private readonly queues = new Map<string, string[]>();
   private mcp: McpManager;
 
   constructor(opts: AgentServiceOptions) {
@@ -308,8 +312,8 @@ export class AgentService {
 
   // ---------- UI → 主进程（协议 §3） ----------
 
-  /** §3.1 send-message（v0.2 起带可选 sessionId，缺省用当前活跃会话） */
-  sendMessage(req: { message: ChatMessage; sessionId?: string }): IpcResult<{ messageId: string }> {
+  /** §3.1 send-message：会话忙时自动排队（queued:true），循环结束后按序续发 */
+  sendMessage(req: { message: ChatMessage; sessionId?: string }): IpcResult<{ messageId: string; queued?: boolean }> {
     const msg = req?.message;
     if (!msg || msg.role !== 'user' || typeof msg.content !== 'string' || !msg.content.trim()) {
       return err('E_INVALID_MESSAGE', 'message 必须是 role 为 user 且 content 非空的消息', 'receive');
@@ -319,16 +323,17 @@ export class AgentService {
     if (!session) {
       return err('E_SESSION_NOT_FOUND', `会话不存在: ${sid}`, 'session');
     }
-    if (this.running.has(session.id)) {
-      return err('E_LOOP_BUSY', '该会话上一轮循环尚未结束', 'receive');
-    }
     if (!this.provider) {
       return err('E_PROVIDER_NOT_CONFIGURED', '尚未配置 LLM Provider，请先调用 set-model-config', 'llm');
     }
     const messageId = `${this.sessionPrefix}-m${++this.messageCounter}`;
-    this.running.set(session.id, { messageId, abort: new AbortController(), partialContent: '' });
-    // 异步启动循环：立即返回 messageId，结果全部走推送通道
-    void this.runLoopTask(session.id, msg.content);
+    if (this.running.has(session.id)) {
+      const q = this.queues.get(session.id) ?? [];
+      q.push(msg.content);
+      this.queues.set(session.id, q);
+      return { ok: true, data: { messageId, queued: true } };
+    }
+    this.startLoop(session.id, msg.content, messageId);
     return { ok: true, data: { messageId } };
   }
 
@@ -358,7 +363,7 @@ export class AgentService {
     return { ok: true, data: null };
   }
 
-  /** §3.4 stop：幂等，中断当前所有会话的循环 */
+  /** §3.4 stop：幂等，中断当前所有会话的循环并清空其排队消息 */
   stop(): IpcResult<null> {
     if (this.running.size === 0) return { ok: true, data: null };
     for (const [sid, running] of this.running) {
@@ -369,9 +374,29 @@ export class AgentService {
         }
       }
       running.abort.abort();
+      this.queues.delete(sid);
       void this.appendAudit({ type: 'stop', sessionId: sid, messageId: running.messageId });
     }
     return { ok: true, data: null };
+  }
+
+  /** §3.25 preview-file：审批弹窗的写文件 diff 预览（读取现有文件内容，UI 端算差异） */
+  async previewFile(req: { path: string }): Promise<IpcResult<{ exists: boolean; content: string }>> {
+    const raw = req?.path;
+    if (typeof raw !== 'string' || !raw.trim()) {
+      return err('E_INVALID_CONFIG', 'path 不能为空', 'unknown');
+    }
+    const file = path.isAbsolute(raw) ? raw : path.resolve(this.appDir, raw);
+    if (!existsSync(file)) return { ok: true, data: { exists: false, content: '' } };
+    try {
+      const st = await stat(file);
+      if (!st.isFile()) return { ok: true, data: { exists: false, content: '' } };
+      // 预览上限 200KB，超限只回传开头（diff 场景足够）
+      const content = await readFile(file, 'utf-8');
+      return { ok: true, data: { exists: true, content: content.length > 200_000 ? content.slice(0, 200_000) : content } };
+    } catch (e) {
+      return { ok: true, data: { exists: false, content: '' } };
+    }
   }
 
   /** §3.5 list-plugins */
@@ -728,16 +753,35 @@ export class AgentService {
 
   // ---------- 内部：循环任务与事件映射 ----------
 
+  /** 建立运行锁并异步启动循环（sendMessage 与队列续发共用此入口） */
+  private startLoop(sessionId: string, content: string, messageId?: string): void {
+    const mid = messageId ?? `${this.sessionPrefix}-m${++this.messageCounter}`;
+    this.running.set(sessionId, { messageId: mid, abort: new AbortController(), partialContent: '' });
+    void this.runLoopTask(sessionId, content);
+  }
+
   private async runLoopTask(sessionId: string, userMessage: string): Promise<void> {
     const running = this.running.get(sessionId)!;
     const session = this.store.get(sessionId)!;
     try {
+      // 上下文压缩：超预算时把较旧的轮次摘要成一段背景（失败则回退为循环内整轮截断）
+      let inputHistory = session.messages;
+      const est = inputHistory.reduce((sum, m) => sum + estimateTokens(m.content) + 8, 0);
+      if (this.contextTokenBudget > 0 && est > this.contextTokenBudget) {
+        try {
+          inputHistory = await this.compressHistory(session.messages, this.provider!);
+        } catch {
+          // 摘要失败 → 交给循环内的整轮截断兜底
+          inputHistory = session.messages;
+        }
+      }
+      const inputLen = inputHistory.length;
       const result = await runLoop({
         provider: this.provider!,
         registry: this.registry,
-        systemPrompt: SYSTEM_PROMPT,
+        systemPrompt: this.buildSystemPrompt(),
         userMessage,
-        history: session.messages,
+        history: inputHistory,
         workingDir: this.appDir,
         contextTokenBudget: this.contextTokenBudget,
         options: {
@@ -757,8 +801,8 @@ export class AgentService {
             }),
         },
       });
-      // 全量历史（含本轮）持久化
-      await this.store.replaceMessages(sessionId, result.history);
+      // 持久化：压缩只影响输入，磁盘历史保持全量（只追加本轮新增的消息）
+      await this.store.replaceMessages(sessionId, [...session.messages, ...result.history.slice(inputLen)]);
       void this.maybeAutoTitle(sessionId);
     } catch (e) {
       if (running.abort.signal.aborted) {
@@ -773,8 +817,70 @@ export class AgentService {
       for (const key of this.pendingApprovals.keys()) {
         if (key.startsWith(`${running.messageId}:`)) this.pendingApprovals.delete(key);
       }
-      this.running.delete(sessionId);
+      if (this.running.get(sessionId)?.messageId === running.messageId) {
+        this.running.delete(sessionId);
+      }
+      // 队列续发：本会话排队的消息按序补跑
+      const q = this.queues.get(sessionId);
+      if (q?.length && !this.running.has(sessionId)) {
+        const next = q.shift();
+        if (q.length === 0) this.queues.delete(sessionId);
+        if (next) this.startLoop(sessionId, next);
+      }
     }
+  }
+
+  /**
+   * 上下文压缩：保留近期一半预算的完整轮次，更旧的部分经一次模型调用压成要点，
+   * 以「历史摘要」user/assistant 消息对置于开头（保持 Anthropic 的角色交替约束）。
+   */
+  private async compressHistory(history: ChatMessage[], provider: LLMProvider): Promise<ChatMessage[]> {
+    const keep = trimHistory(history, Math.max(this.contextTokenBudget / 2, 2000)).messages;
+    const keptSet = new Set(keep);
+    const older = history.filter((m) => !keptSet.has(m));
+    if (older.length === 0) return history;
+    const transcript = older
+      .map((m) => {
+        const who = m.role === 'user' ? '用户' : m.role === 'assistant' ? '助手' : '工具';
+        const tools = m.toolCalls?.length ? `（调用 ${m.toolCalls.map((c) => c.name).join(', ')}）` : '';
+        return `${who}${tools}: ${truncateText(m.content || (m.toolCalls ? '工具调用' : ''), 400)}`;
+      })
+      .join('\n');
+    const res = await provider.chat(
+      [{
+        role: 'user',
+        content: `把下面这段人与助手的历史对话压缩成一份要点摘要（保留：任务目标、已做决定的操作、涉及的关键文件路径、未完成事项）。直接输出摘要本身，不超过 300 字：\n\n${transcript.slice(0, 12_000)}`,
+      }],
+      [],
+    );
+    const summary = res.content.trim();
+    if (!summary) throw new Error('摘要为空');
+    return [
+      { role: 'user', content: `【历史摘要】以下是本次会话较早内容的要点：\n${summary}` },
+      { role: 'assistant', content: '已了解以上背景，请继续。' },
+      ...keep,
+    ];
+  }
+
+  /**
+   * 系统提示分层：底座基础提示 + 全局 AGENTS.md（~/.agent-base/AGENTS.md）
+   * + 项目 AGENTS.md（appDir/AGENTS.md）。每轮发送时读取，改文件即生效。
+   */
+  private buildSystemPrompt(): string {
+    const parts = [SYSTEM_PROMPT];
+    const globalPath = path.join(homedir(), '.agent-base', 'AGENTS.md');
+    const projectPath = path.join(this.appDir, 'AGENTS.md');
+    for (const [label, file] of [['全局说明', globalPath], ['项目说明', projectPath]] as const) {
+      try {
+        if (existsSync(file)) {
+          const content = readFileSync(file, 'utf-8').trim();
+          if (content) parts.push(`# ${label}（AGENTS.md，请严格遵守）\n${content.slice(0, 20_000)}`);
+        }
+      } catch {
+        // 读取失败不阻塞对话
+      }
+    }
+    return parts.join('\n\n');
   }
 
   /** 首轮对话后自动起标题（假模型除外——不消费测试队列） */
@@ -907,6 +1013,11 @@ function err(code: string, message: string, phase: LoopError['phase']): IpcResul
 function truncate(value: unknown, max: number): string {
   const s = JSON.stringify(value) ?? '';
   return s.length > max ? s.slice(0, max) + '…' : s;
+}
+
+function truncateText(s: string, max: number): string {
+  const one = s.replace(/\s+/g, ' ').trim();
+  return one.length > max ? one.slice(0, max) + '…' : one;
 }
 
 function sanitizeName(name: string): string {
