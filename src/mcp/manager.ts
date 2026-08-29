@@ -130,11 +130,13 @@ export class McpManager {
         await this.disconnectServer(name, cfg ? 'disabled' : 'disconnected');
       }
     }
-    // 连接：新增或刚启用的（enabled=false 的绝不连）
+    // 连接：新增或刚启用的（enabled=false 的绝不连）。
+    // closed 的占位连接（init 时 enabled:false 的 server）也算"待连接"：占位只是状态标记，
+    // 否则运行中启用一个初始禁用的 server 会被误判为已存在而永远连不上（CODE_REVIEW.md F2）
     for (const [name, cfg] of Object.entries(config)) {
       if (cfg.enabled === false) continue;
       const existing = this.connections.get(name);
-      if (!existing) {
+      if (!existing || existing.closed) {
         await this.connectServer(name, cfg);
       }
     }

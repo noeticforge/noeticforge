@@ -65,7 +65,14 @@ async function collectPluginDirs(dir: string, depth: number): Promise<string[]> 
 export async function loadPluginFromDir(pluginDir: string): Promise<Plugin> {
   const manifestPath = path.join(pluginDir, 'manifest.json');
   const raw = await readFile(manifestPath, 'utf-8');
-  const manifest = validateManifest(JSON.parse(raw), pluginDir);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (e) {
+    // 带上 "manifest" 关键字：安装通道据此归类为校验失败（E_PLUGIN_VALIDATION_FAILED）
+    throw new Error(`manifest.json 不是合法 JSON: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  const manifest = validateManifest(parsed, pluginDir);
 
   const entryPath = path.join(pluginDir, manifest.entry);
   // 查询参数用于穿透 ESM import 缓存：热更新插件时必须拿到磁盘上的新代码而不是旧模块

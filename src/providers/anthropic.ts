@@ -32,14 +32,18 @@ export class AnthropicProvider implements LLMProvider {
       messages.filter((m) => m.role !== 'system'),
     );
 
-    // 推理力度 → 扩展思考预算；max_tokens 必须大于预算
     const maxTokens = this.opts.maxTokens ?? 8192;
     const body: Record<string, unknown> = {
       model: this.opts.model,
       max_tokens: maxTokens,
       messages: apiMessages,
     };
-    if (chatOptions?.reasoningEffort) {
+    // 推理力度 → 扩展思考预算；max_tokens 必须大于预算。
+    // 例外：请求历史中已存在带 tool_calls 的 assistant 消息时不附加 thinking——
+    // Anthropic API 要求此类消息携带 thinking 块，而本底座不存储 thinking（持久化的是纯文本历史），
+    // 强行透传会导致第二轮起必然 400，因此对含工具历史的请求自动降级为不思考。
+    const hasToolHistory = messages.some((m) => m.role === 'assistant' && m.toolCalls?.length);
+    if (chatOptions?.reasoningEffort && !hasToolHistory) {
       const budget = { low: 2048, medium: 8192, high: 16384 }[chatOptions.reasoningEffort];
       body.thinking = { type: 'enabled', budget_tokens: budget };
       body.max_tokens = Math.max(maxTokens, budget + 1024);

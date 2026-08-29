@@ -45,7 +45,15 @@ export class TerminalManager {
 
   stop(): void {
     if (!this.proc) return;
-    try { this.proc.kill(); } catch { /* 已退出 */ }
+    const pid = this.proc.pid;
+    try {
+      if (process.platform === 'win32' && pid) {
+        // cmd.exe 的子进程不会随 kill() 一起退出：用 taskkill /T 终止整棵进程树（CODE_REVIEW.md F8）
+        spawn('taskkill', ['/pid', String(pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
+      } else {
+        this.proc.kill();
+      }
+    } catch { /* 已退出 */ }
     this.proc = null;
     this.buffer = '';
   }

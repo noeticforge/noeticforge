@@ -138,7 +138,13 @@ const SYSTEM_PROMPT = `你是一个桌面端助手，可以通过提供的工具
 const DEFAULT_REGISTRY_URL =
   'https://raw.githubusercontent.com/agent-base/registry/main/registry.json';
 
-const APP_VERSION = '0.4.0';
+/** 应用版本（与 package.json 同源，避免双写漂移；源码与编译产物相对层级一致） */
+let APP_VERSION = 'dev';
+try {
+  APP_VERSION = JSON.parse(readFileSync(new URL('../../../package.json', import.meta.url), 'utf-8')).version ?? APP_VERSION;
+} catch {
+  // 读取失败用占位，不影响功能
+}
 
 interface RunningLoop {
   messageId: string;
@@ -169,6 +175,8 @@ export class AgentService {
   private forceApprovalPermissions: Permission[] | undefined;
   /** 当前 provider 保存过的模型列表（设置页维护，输入框下拉消费） */
   private models: string[] = [];
+  /** 当前生效的模型（AppInfo 的真实来源；此前用 models[0] 猜测会在列表乱序时显示错误） */
+  private currentModel: string | null = null;
   /** 当前 provider 保存的 baseUrl（设置页回填） */
   private savedBaseUrl: string | null = null;
   /** 推理力度（undefined = 不透传，由 provider 默认行为决定） */
@@ -245,6 +253,9 @@ export class AgentService {
     }
     if (typeof cfg.baseUrl === 'string' && cfg.baseUrl.trim()) {
       this.savedBaseUrl = cfg.baseUrl.trim();
+    }
+    if (typeof cfg.model === 'string' && cfg.model.trim()) {
+      this.currentModel = cfg.model.trim();
     }
     if (
       cfg.reasoningEffort === 'low' || cfg.reasoningEffort === 'medium' || cfg.reasoningEffort === 'high'
@@ -330,7 +341,9 @@ export class AgentService {
   sendMessage(req: { message: ChatMessage; sessionId?: string; contextFiles?: string[] }): IpcResult<{ messageId: string; queued?: boolean }> {
     const msg = req?.message;
     const hasText = typeof msg?.content === 'string' && !!msg.content.trim();
-    const hasParts = isMessageContent(msg?.content);
+    // 多模态豁免仅对分片数组成立：isMessageContent 对任意字符串都返回 true，
+    // 不收窄的话纯空白的文本消息会绕过非空校验（CODE_REVIEW.md F5）
+    const hasParts = Array.isArray(msg?.content) && isMessageContent(msg?.content);
     if (!msg || msg.role !== 'user' || (!hasText && !hasParts)) {
       return err('E_INVALID_MESSAGE', 'message 必须是 role 为 user 且内容非空的消息', 'receive');
     }
@@ -452,7 +465,16 @@ export class AgentService {
   /** §3.6 install-plugin：校验 → 复制到 plugins/user/ → 注册（同名 = 热更新） */
   async installPlugin(req: { pluginDir: string }): Promise<IpcResult<{ plugin: PluginInfo }>> {
     const sourceDir = req?.pluginDir;
-    if (!sourceDir || !existsSync(sourceDir) || !(await stat(sourceDir)).isDirectory()) {
+    // stat 可能因竞态（目录刚被删/权限）抛错：必须兜住，维持 handler 永不 throw 契约
+    let sourceIsDir = false;
+    if (typeof sourceDir === 'string' && existsSync(sourceDir)) {
+      try {
+        sourceIsDir = (await stat(sourceDir)).isDirectory();
+      } catch {
+        sourceIsDir = false;
+      }
+    }
+    if (!sourceIsDir) {
       return err('E_PATH_NOT_FOUND', `目录不存在: ${sourceDir}`, 'unknown');
     }
     let plugin: Plugin;
@@ -520,15 +542,21 @@ export class AgentService {
     if (entry.sha256 && digest !== String(entry.sha256)) {
       return err('E_CHECKSUM_MISMATCH', '插件包 sha256 与注册表不符，已中止安装', 'unknown');
     }
-    // 解压到临时目录后走标准安装路径（校验 → 复制 → 注册）
+    // 解压到临时目录后走标准安装路径（校验 → 复制 → 注册）。
+    // 损坏的 zip 会在 AdmZip 构造/解压时抛错：必须转成 IpcResult，不能击穿「handler 永不 throw」契约（CODE_REVIEW.md F3）
     const tmp = await mkdtemp(path.join(tmpdir(), 'agent-base-registry-'));
     try {
-      const zip = new AdmZip(Buffer.from(zipBuf));
-      zip.extractAllTo(tmp, true);
-      // zip 根若包了一层目录，往下钻一层找 manifest.json
-      const dir = existsSync(path.join(tmp, 'manifest.json'))
-        ? tmp
-        : (await findDirWithManifest(tmp)) ?? tmp;
+      let dir: string;
+      try {
+        const zip = new AdmZip(Buffer.from(zipBuf));
+        zip.extractAllTo(tmp, true);
+        // zip 根若包了一层目录，往下钻一层找 manifest.json
+        dir = existsSync(path.join(tmp, 'manifest.json'))
+          ? tmp
+          : (await findDirWithManifest(tmp)) ?? tmp;
+      } catch (e) {
+        return err('E_PLUGIN_LOAD_FAILED', `插件包解压失败: ${e instanceof Error ? e.message : String(e)}`, 'unknown');
+      }
       return await this.installPlugin({ pluginDir: dir });
     } finally {
       await rm(tmp, { recursive: true, force: true });
@@ -620,6 +648,7 @@ export class AgentService {
     } else if (model) {
       this.models = [model, ...this.models.filter((m) => m !== model)];
     }
+    if (model) this.currentModel = model;
     if (typeof cfg.baseUrl === 'string' && cfg.baseUrl.trim()) this.savedBaseUrl = cfg.baseUrl.trim();
     // 读改写：保留文件里与 provider 无关的策略字段（contextTokenBudget / 权限等）
     const persist = {
@@ -836,7 +865,7 @@ export class AgentService {
       version: APP_VERSION,
       appDir: this.appDir,
       provider: this.provider?.id ?? null,
-      model: this.models[0] ?? null,
+      model: this.currentModel ?? this.models[0] ?? null,
       models: [...this.models],
       baseUrl: this.savedBaseUrl,
       permissionMode: this.permissionMode,
@@ -1112,9 +1141,14 @@ export class AgentService {
       .chat([{ role: 'user', content: prompt }], [])
       .then(async (res) => {
         const title = res.content.trim().replace(/^["'「『]|["'」』]$/g, '').slice(0, 24);
+        const cur = this.store.get(sessionId);
+        // 用户在生成期间手动改过名 → 不覆盖（CODE_REVIEW.md F7）
+        if (!cur || !this.store.isUntitled(cur)) return;
         await this.store.setTitle(sessionId, title || firstUser.slice(0, 20));
       })
       .catch(async () => {
+        const cur = this.store.get(sessionId);
+        if (!cur || !this.store.isUntitled(cur)) return;
         await this.store.setTitle(sessionId, firstUser.slice(0, 20));
       })
       .then(() => {

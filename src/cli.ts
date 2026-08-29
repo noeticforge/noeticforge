@@ -23,7 +23,12 @@ async function main(): Promise<void> {
   const pluginsRoot = path.resolve('plugins');
   const report = await loadPluginsFromRoot(pluginsRoot, registry);
 
-  console.log(`agent-base v0.1.0 | 模型: ${cfg.provider} (${cfg.model ?? '默认'})`);
+  // 版本号与 package.json 同源（此前硬编码 v0.1.0 早已过期）
+  let version = 'dev';
+  try {
+    version = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf-8')).version ?? version;
+  } catch { /* 读取失败用占位 */ }
+  console.log(`agent-base v${version} | 模型: ${cfg.provider} (${cfg.model ?? '默认'})`);
   console.log(`已加载插件: ${report.loaded.join(', ') || '无'}`);
   if (report.failed.length) {
     console.warn(`加载失败的插件: ${report.failed.map((f) => `${f.dir}(${f.error})`).join('; ')}`);

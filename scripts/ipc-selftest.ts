@@ -278,6 +278,30 @@ async function main(): Promise<void> {
   check(unknownToggle.ok === false && unknownToggle.error.code === 'E_MCP_NOT_FOUND', 'toggle 不存在的 MCP server → E_MCP_NOT_FOUND');
   await service4.shutdown();
 
+  // ---------- 9.5 回归（CODE_REVIEW F2）：初始 enabled:false 的 server 运行中启用可真正连接 ----------
+  const service4b = new AgentService({ appDir, pushEvent: push, initialProvider: new MockProvider([]) });
+  await service4b.init(); // 上一步 toggle(false) 已把 enabled:false 落盘 → 此处应出现 disabled 占位
+  const mcpInit = unwrap(await service4b.listMcpServers());
+  check(
+    mcpInit.servers.find((s) => s.name === 'mock')?.state === 'disabled',
+    'F2 前置：mcp.json 初始禁用的 server 在启动后为 disabled 占位',
+  );
+  const marker = events.length;
+  const on = await service4b.toggleMcpServer({ name: 'mock', enabled: true });
+  check(on.ok === true, 'F2: 启用初始 disabled 的 MCP server 受理成功');
+  await waitFor(
+    () => events.slice(marker).some((e) => e.channel === 'mcp-status-changed' && JSON.stringify(e.payload).includes('"connected"')),
+    10000,
+    'F2: 启用后真实连接（旧实现会卡在 disabled 永不连接）',
+  );
+  const mcpOn = unwrap(await service4b.listMcpServers());
+  check(
+    mcpOn.servers.find((s) => s.name === 'mock')?.state === 'connected' &&
+      (mcpOn.servers.find((s) => s.name === 'mock')?.toolCount ?? 0) > 0,
+    'F2: 启用后状态 connected 且工具已桥接',
+  );
+  await service4b.shutdown();
+
   // ---------- 10. 策略与应用信息（v0.3）：权限模式 / 审计 / 免 Key 切模型 ----------
   const audit = await service.readAudit({ lines: 50 });
   check(
