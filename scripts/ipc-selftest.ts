@@ -68,7 +68,7 @@ async function main(): Promise<void> {
   ]);
   const service = new AgentService({ appDir, pushEvent: push, initialProvider: mock });
   await service.init();
-  check(events.some((e) => e.channel === 'plugins-changed' && e.payload.plugins.length === 4), 'init 推送 plugins-changed（4 个内置插件）');
+  check(events.some((e) => e.channel === 'plugins-changed' && e.payload.plugins.length === 5), 'init 推送 plugins-changed（4 内置 + core-subagent）');
 
   // 非法消息
   const bad = service.sendMessage({ message: { role: 'assistant', content: 'x' } as any });
@@ -149,7 +149,7 @@ async function main(): Promise<void> {
 
   // ---------- 4. 插件热装卸 ----------
   const list = service.listPlugins();
-  check(list.ok === true && list.ok && list.data.plugins.length === 4, 'list-plugins 返回 4 个插件');
+  check(list.ok === true && list.ok && list.data.plugins.length === 5, 'list-plugins 返回 5 个插件（含 core-subagent）');
 
   // 造一个临时插件（echo 工具，无权限要求）
   const tmpPluginDir = path.join(appDir, 'incoming-echo');
@@ -385,6 +385,84 @@ async function main(): Promise<void> {
   check(shRes.payload.result.ok === true && shRes.payload.result.output.includes('hello-agent-base'), 'shell-exec 插件经批准真实执行命令');
   await waitFor(() => events.some((e) => e.channel === 'loop-done' && e.payload.messageId === mid7), 10_000, 'mid7 loop-done');
   await service7.shutdown();
+
+  // ---------- 12. 子代理 / @ 引用 / 多模态附件 / 推理力度（v0.4） ----------
+  class CapturingProvider2 {
+    readonly id = 'mock';
+    calls = 0;
+    lastSystem: string | null = null;
+    lastUserText = '';
+    lastUserIsArray = false;
+    lastEffort: string | undefined = undefined;
+    private mock: MockProvider;
+    constructor(responses: ConstructorParameters<typeof MockProvider>[0]) { this.mock = new MockProvider(responses); }
+    async chat(messages: any[], tools: any, options: any) {
+      this.calls += 1;
+      this.lastSystem = typeof messages[0]?.content === 'string' ? messages[0].content : null;
+      const u = [...messages].reverse().find((m: any) => m.role === 'user');
+      this.lastUserIsArray = Array.isArray(u?.content);
+      this.lastUserText = typeof u?.content === 'string'
+        ? u.content
+        : (u?.content ?? []).map((p: any) => (p.type === 'text' ? p.text : '[图片]')).join('');
+      this.lastEffort = options?.reasoningEffort;
+      return this.mock.chat(messages, tools, options);
+    }
+  }
+  const cap2 = new CapturingProvider2([
+    { content: '', toolCalls: [{ id: 'sub1', name: 'subagent.run', arguments: { task: '向子代理问好' } }], finishReason: 'tool_calls' },
+    { content: 'sub-hello', toolCalls: [], finishReason: 'stop' },
+    { content: 'outer-done', toolCalls: [], finishReason: 'stop' },
+    { content: '@ok', toolCalls: [], finishReason: 'stop' },
+    { content: 'effort-ok', toolCalls: [], finishReason: 'stop' },
+    { content: 'mm-ok', toolCalls: [], finishReason: 'stop' },
+  ]);
+  const service8 = new AgentService({ appDir, pushEvent: push, initialProvider: cap2 as unknown as LLMProvider, contextTokenBudget: 30_000 });
+  await service8.init();
+  await service8.createSession({ title: 'v04 测试' });
+  await writeFile(path.join(appDir, 'notes.txt'), '上下文标记XYZ');
+  await writeFile(path.join(appDir, 'dot.png'), Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64'));
+
+  // 子代理：外层派发 → 内层隔离循环 → 结果回喂 → 外层收尾
+  const s8 = service8.sendMessage({ message: { role: 'user', content: '委派子代理' } });
+  const mid8 = (s8 as { ok: true; data: { messageId: string } }).data.messageId;
+  await waitFor(() => events.some((e) => e.channel === 'tool-result' && e.payload.toolCallId === 'sub1'), 10_000, 'sub1 结果');
+  const subRes = events.find((e) => e.channel === 'tool-result' && e.payload.toolCallId === 'sub1')!;
+  check(subRes.payload.result.ok === true && subRes.payload.result.output.includes('sub-hello'), '子代理隔离循环执行并把最终答复回喂外层');
+  check(subRes.payload.result.output.includes('core-subagent') === false, '子代理注册表不含自身（禁止嵌套派生）');
+  await waitFor(() => events.some((e) => e.channel === 'loop-done' && e.payload.messageId === mid8 && e.payload.content === 'outer-done'), 10_000, 'mid8 loop-done');
+  check(cap2.calls === 3, `子代理流程模型调用 3 次（外层/内层/外层收尾），实际 ${cap2.calls}`);
+
+  // @ 引用注入
+  await service8.sendMessage({ message: { role: 'user', content: '看这个 @notes.txt' }, contextFiles: ['notes.txt'] });
+  await waitFor(() => events.some((e) => e.channel === 'loop-done' && e.payload.content === '@ok'), 8000, '@ 引用轮完成');
+  check(cap2.calls === 4, `@ 引用轮后模型调用 4 次，实际 ${cap2.calls}`);
+  check(
+    cap2.lastUserText.includes('引用上下文') && cap2.lastUserText.includes('上下文标记XYZ'),
+    `@ 引用文件内容注入消息尾部（实际: ${JSON.stringify(cap2.lastUserText.slice(0, 90))}）`,
+  );
+
+  // 推理力度透传
+  await service8.setAgentPolicy({ reasoningEffort: 'low' });
+  await service8.sendMessage({ message: { role: 'user', content: '力度测试' } });
+  await waitFor(() => events.some((e) => e.channel === 'loop-done' && e.payload.content === 'effort-ok'), 8000, '力度轮完成');
+  check(cap2.lastEffort === 'low', '推理力度 low 透传到 provider 调用');
+
+  // 多模态消息（文本 + 图片分片）
+  const mm = await service8.sendMessage({
+    message: { role: 'user', content: [{ type: 'text', text: '看这张图' }, { type: 'image', mediaType: 'image/png', data: 'iVBORw0KGgo=' }] },
+  });
+  check(mm.ok === true, '多模态消息受理');
+  await waitFor(() => events.some((e) => e.channel === 'loop-done' && e.payload.content === 'mm-ok'), 8000, '多模态轮完成');
+  check(cap2.lastUserIsArray === true, '图片以内容分片数组传给 provider');
+
+  // 附件读取与 @ 文件枚举
+  const att = await service8.readAttachment({ path: 'dot.png' });
+  check(att.ok && att.data!.kind === 'image' && att.data!.mediaType === 'image/png' && att.data!.data!.length > 50, 'read-attachment 图片 → base64 分片数据');
+  const att2 = await service8.readAttachment({ path: 'notes.txt' });
+  check(att2.ok && att2.data!.kind === 'text' && att2.data!.text!.includes('上下文标记XYZ'), 'read-attachment 文本 → UTF-8 内容');
+  const ws = await service8.listWorkspaceFiles({ query: 'notes' });
+  check(ws.ok && ws.data!.files.some((f) => f.rel === 'notes.txt'), 'list-workspace-files 命中 notes.txt');
+  await service8.shutdown();
 
   await rm(appDir, { recursive: true, force: true });
   console.log('\nIPC 自测全部通过 🎉');

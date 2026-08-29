@@ -1,5 +1,5 @@
 import { cp, rm, readFile, writeFile, stat, appendFile, mkdir } from 'node:fs/promises';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { mkdtemp, readdir } from 'node:fs/promises';
@@ -14,11 +14,13 @@ import type {
   Permission,
   Plugin,
   ToolCall,
+  ToolResult,
 } from '../types.js';
 import { ToolRegistry } from '../core/registry.js';
 import { runLoop } from '../core/loop.js';
 import { AgentLoopError } from '../core/errors.js';
-import { estimateTokens, trimHistory } from '../core/context.js';
+import { estimateMessageTokens, trimHistory } from '../core/context.js';
+import { contentToText, isMessageContent, type MessageContent } from '../types.js';
 import { SessionStore, type Session } from '../core/session-store.js';
 import { loadPluginFromDir, loadPluginsFromRoot } from '../plugins/loader.js';
 import { createProvider, type ProviderConfig } from '../providers/provider.js';
@@ -92,6 +94,7 @@ export interface AppInfo {
   baseUrl: string | null;
   permissionMode: PermissionMode;
   maxIterations: number;
+  reasoningEffort: 'low' | 'medium' | 'high' | undefined;
   sessionCount: number;
   pluginCount: number;
   mcpCount: number;
@@ -107,7 +110,8 @@ export type PushChannel =
   | 'loop-error'
   | 'plugins-changed'
   | 'sessions-changed'
-  | 'mcp-status-changed';
+  | 'mcp-status-changed'
+  | 'term-data';
 
 export interface AgentServiceOptions {
   /** 项目根目录（config.json / plugins/ / sessions/ 所在地） */
@@ -127,13 +131,14 @@ export interface AgentServiceOptions {
   pluginRegistryUrl?: string;
 }
 
-const SYSTEM_PROMPT = `你是一个桌面端助手，可以通过提供的工具读写用户电脑上的文件来完成任务。
+const SYSTEM_PROMPT = `你是一个桌面端助手，可以通过提供的工具读写用户电脑上的文件、执行命令、抓取网页来完成任务。
+对于可以独立完成的多步子任务，优先使用 subagent.run 工具委派子代理执行，保持主对话简洁。
 工具的执行结果会以 tool 消息返回给你。如果工具返回了错误，请如实告知用户，不要虚构结果。`;
 
 const DEFAULT_REGISTRY_URL =
   'https://raw.githubusercontent.com/agent-base/registry/main/registry.json';
 
-const APP_VERSION = '0.3.0';
+const APP_VERSION = '0.4.0';
 
 interface RunningLoop {
   messageId: string;
@@ -166,6 +171,8 @@ export class AgentService {
   private models: string[] = [];
   /** 当前 provider 保存的 baseUrl（设置页回填） */
   private savedBaseUrl: string | null = null;
+  /** 推理力度（undefined = 不透传，由 provider 默认行为决定） */
+  private reasoningEffort: 'low' | 'medium' | 'high' | undefined = undefined;
   private readonly pluginRegistryUrl: string;
 
   private readonly store: SessionStore;
@@ -182,7 +189,7 @@ export class AgentService {
   /** 插件设置缓存（key: 插件名） */
   private readonly settingsCache = new Map<string, Record<string, unknown>>();
   /** 每会话的消息队列：循环进行中收到的消息排队，结束后自动续发 */
-  private readonly queues = new Map<string, string[]>();
+  private readonly queues = new Map<string, MessageContent[]>();
   private mcp: McpManager;
 
   constructor(opts: AgentServiceOptions) {
@@ -239,6 +246,12 @@ export class AgentService {
     if (typeof cfg.baseUrl === 'string' && cfg.baseUrl.trim()) {
       this.savedBaseUrl = cfg.baseUrl.trim();
     }
+    if (
+      cfg.reasoningEffort === 'low' || cfg.reasoningEffort === 'medium' || cfg.reasoningEffort === 'high'
+    ) {
+      this.reasoningEffort = cfg.reasoningEffort;
+    }
+    this.registerSubagentTool();
     await loadPluginsFromRoot(path.join(this.appDir, 'plugins'), this.registry);
     await this.store.init();
     if (this.store.list().length === 0) {
@@ -312,11 +325,13 @@ export class AgentService {
 
   // ---------- UI → 主进程（协议 §3） ----------
 
-  /** §3.1 send-message：会话忙时自动排队（queued:true），循环结束后按序续发 */
-  sendMessage(req: { message: ChatMessage; sessionId?: string }): IpcResult<{ messageId: string; queued?: boolean }> {
+  /** §3.1 send-message：会话忙时自动排队（queued:true）；支持多模态内容与 @ 引用文件注入 */
+  sendMessage(req: { message: ChatMessage; sessionId?: string; contextFiles?: string[] }): IpcResult<{ messageId: string; queued?: boolean }> {
     const msg = req?.message;
-    if (!msg || msg.role !== 'user' || typeof msg.content !== 'string' || !msg.content.trim()) {
-      return err('E_INVALID_MESSAGE', 'message 必须是 role 为 user 且 content 非空的消息', 'receive');
+    const hasText = typeof msg?.content === 'string' && !!msg.content.trim();
+    const hasParts = isMessageContent(msg?.content);
+    if (!msg || msg.role !== 'user' || (!hasText && !hasParts)) {
+      return err('E_INVALID_MESSAGE', 'message 必须是 role 为 user 且内容非空的消息', 'receive');
     }
     const sid = req.sessionId ?? this.activeSessionId;
     const session = sid ? this.store.get(sid) : undefined;
@@ -326,14 +341,38 @@ export class AgentService {
     if (!this.provider) {
       return err('E_PROVIDER_NOT_CONFIGURED', '尚未配置 LLM Provider，请先调用 set-model-config', 'llm');
     }
+    // @ 引用文件 → 读取内容注入消息尾部（最多 5 个文件，单个 2 万字符）
+    let content: MessageContent = msg.content;
+    const files = (Array.isArray(req.contextFiles) ? req.contextFiles : [])
+      .filter((f): f is string => typeof f === 'string' && !!f.trim())
+      .slice(0, 5);
+    if (files.length) {
+      const blocks: string[] = [];
+      for (const rel of files) {
+        const abs = path.isAbsolute(rel) ? rel : path.resolve(this.appDir, rel);
+        try {
+          if (!existsSync(abs)) continue;
+          const st = statSync(abs);
+          if (!st.isFile() || st.size > 500_000) continue;
+          const text = readFileSync(abs, 'utf-8').slice(0, 20_000);
+          blocks.push(`--- ${rel} ---\n${text}`);
+        } catch {
+          continue; // 读取失败（二进制等）静默跳过
+        }
+      }
+      if (blocks.length) {
+        const ctxText = `\n\n【引用上下文（用户通过 @ 引用的文件）】\n${blocks.join('\n\n')}`;
+        content = typeof content === 'string' ? content + ctxText : [...content, { type: 'text' as const, text: ctxText }];
+      }
+    }
     const messageId = `${this.sessionPrefix}-m${++this.messageCounter}`;
     if (this.running.has(session.id)) {
       const q = this.queues.get(session.id) ?? [];
-      q.push(msg.content);
+      q.push(typeof content === 'string' ? content : JSON.stringify(content));
       this.queues.set(session.id, q);
       return { ok: true, data: { messageId, queued: true } };
     }
-    this.startLoop(session.id, msg.content, messageId);
+    this.startLoop(session.id, content, messageId);
     return { ok: true, data: { messageId } };
   }
 
@@ -506,7 +545,7 @@ export class AgentService {
       return err('E_PLUGIN_IN_USE', `插件 ${name} 的工具正在执行，暂不可卸载`, 'unknown');
     }
     // 内置插件只读：随仓库分发，卸载后重启会回来，直接拒绝
-    if (existsSync(path.join(this.appDir, 'plugins', 'builtin', name))) {
+    if (existsSync(path.join(this.appDir, 'plugins', 'builtin', name)) || name.startsWith('core-')) {
       return err('E_PLUGIN_BUILTIN', `插件 ${name} 是内置插件，不允许卸载`, 'unknown');
     }
     const info = toPluginInfo(plugin);
@@ -645,8 +684,107 @@ export class AgentService {
     this.forceApprovalPermissions = preset.force.length ? preset.force : undefined;
   }
 
-  /** §3.22 set-agent-policy：权限模式 / 最大迭代数，立即生效并持久化 */
-  async setAgentPolicy(req: { permissionMode?: PermissionMode; maxIterations?: number }): Promise<IpcResult<null>> {
+  // ---------- 子代理编排 ----------
+
+  /** 注册 core-subagent 插件：唯一能访问宿主模型与注册表的内置工具（不可卸载，core- 前缀保护） */
+  private registerSubagentTool(): void {
+    if (this.registry.listPlugins().some((p) => p.manifest.name === 'core-subagent')) return;
+    const service = this;
+    this.registry.register({
+      manifest: {
+        name: 'core-subagent',
+        version: '0.1.0',
+        displayName: '子代理',
+        description: '底座内置的子任务委派工具',
+        permissions: [],
+        entry: 'core://subagent',
+        protocolVersion: 1,
+      },
+      tools: [
+        {
+          name: 'subagent.run',
+          description:
+            '把一个子任务委托给独立的子 Agent 执行。子 Agent 拥有与你相同的工具（但不能再次派生子代理），' +
+            '工具审批会同样呈报给用户。适合把可独立完成的研究/多步操作拆出去，避免污染主对话上下文。' +
+            'task 必须写成自包含的任务书：目标、涉及文件、期望产出。',
+          parameters: {
+            type: 'object',
+            properties: {
+              task: { type: 'string', description: '子任务描述（自包含：目标/背景/期望产出）' },
+              max_iterations: { type: 'number', description: '子循环最大迭代数（默认 8，上限 20）' },
+            },
+            required: ['task'],
+            additionalProperties: false,
+          },
+          permissions: [],
+          requiresApproval: false,
+          async execute(args, ctx) {
+            const run = (ctx.services as { runSubagent?: (a: Record<string, unknown>) => Promise<ToolResult> } | undefined)?.runSubagent;
+            if (!run) return { ok: false, output: '', error: '子代理服务不可用' };
+            return run(args);
+          },
+        },
+      ],
+    });
+  }
+
+  /** 子代理：隔离的 Agent 循环（无 subagent 工具、共享 provider 与审批管线） */
+  private async runSubagent(args: Record<string, unknown>, sessionId: string, parentMessageId: string): Promise<ToolResult> {
+    const task = String(args.task ?? '').trim();
+    if (!task) return { ok: false, output: '', error: 'task 不能为空' };
+    if (!this.provider) return { ok: false, output: '', error: '模型未配置' };
+    let maxIter = Number(args.max_iterations ?? 8);
+    if (!Number.isFinite(maxIter)) maxIter = 8;
+    maxIter = Math.min(Math.max(Math.round(maxIter), 1), 20);
+
+    // 隔离注册表：子代理看不到 subagent.run，禁止嵌套派生
+    const childRegistry = new ToolRegistry();
+    for (const p of this.registry.listPlugins()) {
+      if (p.manifest.name === 'core-subagent') continue;
+      try {
+        childRegistry.register(p);
+      } catch {
+        continue; // 单插件冲突不影响其余工具
+      }
+    }
+
+    try {
+      const result = await runLoop({
+        provider: this.provider,
+        registry: childRegistry,
+        systemPrompt: this.buildSystemPrompt() + '\n\n（你是子代理：专注完成委派的任务，最后输出简洁的最终答复。）',
+        userMessage: task,
+        history: [],
+        workingDir: this.appDir,
+        contextTokenBudget: this.contextTokenBudget,
+        options: {
+          maxIterations: maxIter,
+          signal: this.running.get(sessionId)?.abort.signal,
+          allowedPermissions: this.allowedPermissions,
+          forceApprovalPermissions: this.forceApprovalPermissions,
+          reasoningEffort: this.reasoningEffort,
+          pluginSettings: (name) => this.getPluginSettings(name),
+          // 内部工具事件透传到主对话流（可视化），审批走同一条 pending 管线
+          onEvent: (e) => {
+            if (e.type === 'tool-started' || e.type === 'tool-result' || e.type === 'approval-required') {
+              this.onLoopEvent(sessionId, parentMessageId, e);
+            }
+          },
+          requestApproval: (call) =>
+            new Promise<ApprovalResolution>((resolve) => {
+              this.pendingApprovals.set(`${parentMessageId}:${call.id}`, resolve);
+            }),
+        },
+      });
+      return { ok: true, output: truncateText(result.content || '（子代理未输出内容）', 20_000) };
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      return { ok: false, output: `子代理执行失败: ${message}`, error: 'subagent-failed' };
+    }
+  }
+
+  /** §3.22 set-agent-policy：权限模式 / 最大迭代数 / 推理力度，立即生效并持久化 */
+  async setAgentPolicy(req: { permissionMode?: PermissionMode; maxIterations?: number; reasoningEffort?: 'low' | 'medium' | 'high' }): Promise<IpcResult<null>> {
     const mode = req?.permissionMode;
     if (mode !== undefined) {
       if (!PERMISSION_MODES.includes(mode)) {
@@ -662,6 +800,13 @@ export class AgentService {
       }
       if (!this.manualPolicy) this.maxIterations = iters;
     }
+    const effort = req?.reasoningEffort;
+    if (effort !== undefined) {
+      if (effort !== 'low' && effort !== 'medium' && effort !== 'high') {
+        return err('E_INVALID_CONFIG', 'reasoningEffort 只能是 low / medium / high', 'unknown');
+      }
+      this.reasoningEffort = effort;
+    }
     try {
       const cfgPath = path.join(this.appDir, 'config.json');
       let existing: Record<string, unknown> = {};
@@ -676,6 +821,7 @@ export class AgentService {
         ...existing,
         permissionMode: this.permissionMode,
         maxIterations: this.manualPolicy ? existing.maxIterations : this.maxIterations,
+        reasoningEffort: this.reasoningEffort,
       }, null, 2), 'utf-8');
     } catch {
       // 持久化失败不影响本轮生效
@@ -694,6 +840,7 @@ export class AgentService {
       baseUrl: this.savedBaseUrl,
       permissionMode: this.permissionMode,
       maxIterations: this.maxIterations,
+      reasoningEffort: this.reasoningEffort,
       sessionCount: this.store.list().length,
       pluginCount: this.registry.listPlugins().length,
       mcpCount: this.mcp.status().filter((s) => s.state === 'connected').length,
@@ -712,6 +859,63 @@ export class AgentService {
       return { ok: true, data: { lines: all.slice(-max), total: all.length } };
     } catch (e) {
       return err('E_INTERNAL', `读取审计日志失败: ${e instanceof Error ? e.message : String(e)}`, 'unknown');
+    }
+  }
+
+  /** §3.26 list-workspace-files：@ 上下文引用的文件选择器数据源（浅层遍历工作目录） */
+  async listWorkspaceFiles(req: { query?: string }): Promise<IpcResult<{ files: Array<{ name: string; rel: string; isDir: boolean }> }>> {
+    const SKIP = new Set(['node_modules', 'dist', 'release', '.git', 'sessions', 'out', 'build', '.vs', 'coverage']);
+    const query = (req?.query ?? '').trim().toLowerCase();
+    const out: Array<{ name: string; rel: string; isDir: boolean }> = [];
+    const walk = async (dir: string, relBase: string, depth: number): Promise<void> => {
+      if (depth > 3 || out.length >= 200) return;
+      let entries: import('node:fs').Dirent[];
+      try {
+        entries = await readdir(dir, { withFileTypes: true });
+      } catch {
+        return;
+      }
+      for (const entry of entries) {
+        if (out.length >= 200) return;
+        if (entry.name.startsWith('.') && entry.name !== '.gitignore') continue;
+        const rel = relBase ? `${relBase}/${entry.name}` : entry.name;
+        if (depth > 0 && SKIP.has(entry.name)) continue;
+        if (entry.isDirectory()) {
+          out.push({ name: entry.name, rel: rel + '/', isDir: true });
+          await walk(path.join(dir, entry.name), rel, depth + 1);
+        } else if (entry.isFile()) {
+          out.push({ name: entry.name, rel, isDir: false });
+        }
+      }
+    };
+    await walk(this.appDir, '', 0);
+    const files = query ? out.filter((f) => f.rel.toLowerCase().includes(query)) : out;
+    return { ok: true, data: { files: files.slice(0, 50) } };
+  }
+
+  /** §3.27 read-attachment：附件读取（图片 → base64 分片；文本 → UTF-8） */
+  async readAttachment(req: { path: string }): Promise<IpcResult<{ name: string; kind: 'image' | 'text'; mediaType: string; data?: string; text?: string }>> {
+    const raw = req?.path;
+    if (typeof raw !== 'string' || !raw.trim()) {
+      return err('E_INVALID_CONFIG', 'path 不能为空', 'unknown');
+    }
+    const file = path.isAbsolute(raw) ? raw : path.resolve(this.appDir, raw);
+    if (!existsSync(file)) return err('E_PATH_NOT_FOUND', `文件不存在: ${raw}`, 'unknown');
+    const name = path.basename(file);
+    const ext = path.extname(file).toLowerCase();
+    const imageTypes: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp' };
+    try {
+      const st = statSync(file);
+      if (imageTypes[ext]) {
+        if (st.size > 5 * 1024 * 1024) return err('E_INVALID_CONFIG', '图片超过 5MB 上限', 'unknown');
+        const data = readFileSync(file).toString('base64');
+        return { ok: true, data: { name, kind: 'image', mediaType: imageTypes[ext], data } };
+      }
+      if (st.size > 400_000) return err('E_INVALID_CONFIG', '文本附件超过 400KB 上限', 'unknown');
+      const text = readFileSync(file, 'utf-8');
+      return { ok: true, data: { name, kind: 'text', mediaType: 'text/plain', text } };
+    } catch (e) {
+      return err('E_INTERNAL', `读取附件失败: ${e instanceof Error ? e.message : String(e)}`, 'unknown');
     }
   }
 
@@ -754,19 +958,19 @@ export class AgentService {
   // ---------- 内部：循环任务与事件映射 ----------
 
   /** 建立运行锁并异步启动循环（sendMessage 与队列续发共用此入口） */
-  private startLoop(sessionId: string, content: string, messageId?: string): void {
+  private startLoop(sessionId: string, content: MessageContent, messageId?: string): void {
     const mid = messageId ?? `${this.sessionPrefix}-m${++this.messageCounter}`;
     this.running.set(sessionId, { messageId: mid, abort: new AbortController(), partialContent: '' });
     void this.runLoopTask(sessionId, content);
   }
 
-  private async runLoopTask(sessionId: string, userMessage: string): Promise<void> {
+  private async runLoopTask(sessionId: string, userMessage: MessageContent): Promise<void> {
     const running = this.running.get(sessionId)!;
     const session = this.store.get(sessionId)!;
     try {
       // 上下文压缩：超预算时把较旧的轮次摘要成一段背景（失败则回退为循环内整轮截断）
       let inputHistory = session.messages;
-      const est = inputHistory.reduce((sum, m) => sum + estimateTokens(m.content) + 8, 0);
+      const est = inputHistory.reduce((sum, m) => sum + estimateMessageTokens(m) + 8, 0);
       if (this.contextTokenBudget > 0 && est > this.contextTokenBudget) {
         try {
           inputHistory = await this.compressHistory(session.messages, this.provider!);
@@ -789,7 +993,13 @@ export class AgentService {
           signal: running.abort.signal,
           allowedPermissions: this.allowedPermissions,
           forceApprovalPermissions: this.forceApprovalPermissions,
+          reasoningEffort: this.reasoningEffort,
           pluginSettings: (name) => this.getPluginSettings(name),
+          ctxExtras: () => ({
+            services: {
+              runSubagent: (args: Record<string, unknown>) => this.runSubagent(args, sessionId, running.messageId),
+            },
+          }),
           onChunk: (delta) => {
             running.partialContent += delta;
             this.pushEvent('message-chunk', { messageId: running.messageId, sessionId, role: 'assistant', delta });
@@ -826,8 +1036,7 @@ export class AgentService {
         const next = q.shift();
         if (q.length === 0) this.queues.delete(sessionId);
         if (next) this.startLoop(sessionId, next);
-      }
-    }
+      }    }
   }
 
   /**
@@ -843,7 +1052,7 @@ export class AgentService {
       .map((m) => {
         const who = m.role === 'user' ? '用户' : m.role === 'assistant' ? '助手' : '工具';
         const tools = m.toolCalls?.length ? `（调用 ${m.toolCalls.map((c) => c.name).join(', ')}）` : '';
-        return `${who}${tools}: ${truncateText(m.content || (m.toolCalls ? '工具调用' : ''), 400)}`;
+        return `${who}${tools}: ${truncateText(contentToText(m.content) || (m.toolCalls ? '工具调用' : ''), 400)}`;
       })
       .join('\n');
     const res = await provider.chat(
@@ -887,8 +1096,8 @@ export class AgentService {
   private maybeAutoTitle(sessionId: string): void {
     const session = this.store.get(sessionId);
     if (!session || !this.store.isUntitled(session) || !this.provider || this.provider.id === 'mock') return;
-    const firstUser = session.messages.find((m) => m.role === 'user')?.content ?? '';
-    const firstAnswer = session.messages.find((m) => m.role === 'assistant' && m.content)?.content ?? '';
+    const firstUser = contentToText(session.messages.find((m) => m.role === 'user')?.content ?? '');
+    const firstAnswer = contentToText(session.messages.find((m) => m.role === 'assistant' && m.content)?.content ?? '');
     if (!firstUser.trim()) return;
     const prompt = `为下面这段对话生成一个不超过12个字的标题，直接输出标题本身，不要引号、句号或解释：\n用户：${firstUser.slice(0, 500)}\n助手：${firstAnswer.slice(0, 300)}`;
     void this.provider

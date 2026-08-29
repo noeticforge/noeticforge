@@ -83,7 +83,8 @@
         <footer id="composer">
           <div id="thinking" class="think-row hidden"><span class="think-ico">◎</span><span id="thinking-text">思考 · 0 秒</span></div>
           <div class="composer-card glass-card">
-            <textarea id="message-input" rows="1" placeholder="输入消息，Enter 发送，Shift+Enter 换行"></textarea>
+            <div id="attach-chips" class="attach-chips hidden"></div>
+            <textarea id="message-input" rows="1" placeholder="输入消息，Enter 发送，Shift+Enter 换行；@ 引用文件"></textarea>
             <div class="composer-row">
               <button id="btn-plus" class="round-btn" title="更多">＋</button>
               <button id="btn-policy" class="pill" title="权限模式"><span class="ico">🛡</span><span class="pill-lbl">完全访问</span><span class="caret">▾</span></button>
@@ -101,6 +102,7 @@
         <div class="rp-tabs">
           <button class="rp-tab active" data-tab="events">审查</button>
           <button class="rp-tab" data-tab="audit">审计</button>
+          <button class="rp-tab" data-tab="term">终端</button>
           <button id="rp-close" class="icon-btn" title="关闭面板">✕</button>
         </div>
         <div class="rp-body">
@@ -108,6 +110,13 @@
           <div id="rp-audit" class="rp-page hidden">
             <div class="rp-toolbar"><span id="rp-audit-meta"></span><button id="rp-refresh-audit" class="btn-mini">刷新</button></div>
             <div id="rp-audit-list"></div>
+          </div>
+          <div id="rp-term" class="rp-page rp-term hidden">
+            <div id="term-out"></div>
+            <div class="term-input-row">
+              <span class="term-ps">›</span>
+              <input id="term-in" type="text" placeholder="输入命令，Enter 执行" autocomplete="off" spellcheck="false">
+            </div>
           </div>
         </div>
       </aside>

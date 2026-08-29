@@ -1,8 +1,9 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AgentService } from './agent-service.js';
 import { registerWindowControls, attachWindowStatePush } from './window-controls.js';
+import { TerminalManager } from './terminal.js';
 
 /**
  * Electron 主进程：唯一的职责是把 ipcMain 通道接到 AgentService 上、把推送转发给窗口。
@@ -53,6 +54,27 @@ function handle(channel: string, fn: (req: any) => unknown): void {
 app.whenReady().then(async () => {
   // 窗口外壳控制（不属于 agent IPC 协议，走 ipcMain.on 单向通道）
   registerWindowControls(() => win);
+
+  // 内置终端：持久 shell 会话，输出推流到右侧面板
+  const terminal = new TerminalManager((text) => {
+    if (win && !win.isDestroyed()) win.webContents.send('term-data', { text });
+  }, process.cwd());
+  ipcMain.on('term-input', (_e, req) => {
+    const command = req && typeof req.command === 'string' ? req.command : '';
+    if (command.trim()) terminal.write(command);
+    else terminal.start(); // 空命令 = 拉起 shell
+  });
+  ipcMain.on('term-stop', () => terminal.stop());
+
+  // 附件选择（原生对话框；读取走 read-attachment 通道）
+  handle('pick-files', async () => {
+    if (!win || win.isDestroyed()) return { ok: true, data: { paths: [] } };
+    const r = await dialog.showOpenDialog(win, {
+      properties: ['openFile', 'multiSelections'],
+      title: '选择附件（文本或图片）',
+    });
+    return { ok: true, data: { paths: r.canceled ? [] : r.filePaths } };
+  });
 
   // 循环与审批
   handle('send-message', (req) => service.sendMessage(req));

@@ -3,6 +3,7 @@ import type {
   LLMProvider,
   LoopEvent,
   LoopOptions,
+  MessageContent,
   ToolCall,
   ToolResult,
 } from '../types.js';
@@ -15,7 +16,7 @@ export interface RunLoopInput {
   provider: LLMProvider;
   registry: ToolRegistry;
   systemPrompt: string;
-  userMessage: string;
+  userMessage: MessageContent;
   /** 传入的会话历史（函数内部会追加本轮消息后返回新数组） */
   history: ChatMessage[];
   options: LoopOptions;
@@ -80,6 +81,7 @@ export async function runLoop(input: RunLoopInput): Promise<RunLoopResult> {
         response = await provider.chat(messages, registry.definitions(), {
           signal: options.signal,
           onChunk: options.onChunk,
+          reasoningEffort: options.reasoningEffort,
         });
       } catch (err) {
         // 中断信号原样上抛（由调用方按停止处理）；其余错误包装为结构化错误码
@@ -205,6 +207,7 @@ async function executeToolCall(
       pluginName: entry.pluginName,
       workingDir,
       settings: options.pluginSettings?.(entry.pluginName),
+      ...(options.ctxExtras?.() ?? {}),
     });
     options.onEvent({ type: 'tool-result', call, result });
     return result;

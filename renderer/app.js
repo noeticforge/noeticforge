@@ -40,7 +40,8 @@ const el = {
   // 右侧面板
   rightPanel: $('#right-panel'), rpClose: $('#rp-close'), rpEvents: $('#rp-events'),
   rpAudit: $('#rp-audit'), rpAuditList: $('#rp-audit-list'), rpAuditMeta: $('#rp-audit-meta'),
-  rpRefreshAudit: $('#rp-refresh-audit'),
+  rpRefreshAudit: $('#rp-refresh-audit'), termOut: $('#term-out'), termIn: $('#term-in'),
+  attachChips: $('#attach-chips'),
   // 设置页
   settingsView: $('#settings-view'), setBack: $('#set-back'),
   // toast
@@ -56,11 +57,12 @@ const st = {
   pending: null, activeMenu: null,
   currentAssistant: null,      // 当前 message 的正文块
   currentMessageId: null,
+  attachments: [],             // 待发送附件 [{name,kind,mediaType,data?,text?}]
+  termStarted: false,
 };
 const OUT_LIMIT = 200;
 const POLICY_LABEL = { 'ask-before-change': '变更前确认', 'auto-edit': '自动编辑', plan: '计划模式', full: '完全访问' };
-const EFFORT_STEPS = { low: 5, high: 10, top: 15 };
-const EFFORT_LABEL = { 5: '低', 10: '高', 15: '最高' };
+const EFFORT_LABEL = { low: '低', medium: '高', high: '最高' };
 
 /* ================= [1] 通用工具 ================= */
 const nowTime = () => new Date().toLocaleTimeString('zh-CN', { hour12: false });
@@ -304,7 +306,20 @@ function ensureMsgCol() {
 function addUserBlock(content, opts = {}) {
   ensureMsgCol();
   const block = h('div', 'msg-block-user');
-  block.appendChild(document.createTextNode(content));
+  // 多模态内容：文本分片 + 图片占位
+  if (Array.isArray(content)) {
+    for (const p of content) {
+      if (p.type === 'text') block.appendChild(document.createTextNode(p.text));
+      else block.appendChild(h('span', 'queued-badge', '🖼 图片'));
+    }
+  } else {
+    block.appendChild(document.createTextNode(content));
+  }
+  if (opts.attachments?.length) {
+    for (const a of opts.attachments) {
+      block.appendChild(h('span', 'queued-badge', (a.kind === 'image' ? '🖼 ' : '📎 ') + a.name));
+    }
+  }
   if (opts.queuedBadge) block.appendChild(h('span', 'queued-badge', '已排队'));
   msgCol.appendChild(block);
   msgCol.appendChild(h('div', 'msg-gap'));
@@ -442,19 +457,38 @@ function hideStatusCard() {
 }
 
 /* ================= [9] 发送 / 事件处理 / 审批 ================= */
+/** 发送：组装 @ 引用与附件 → sendMessage（多模态分片） */
 async function handleSend() {
-  const content = el.input.value.trim();
-  if (!content) return;
+  const raw = el.input.value;
+  const text = raw.trim();
+  if (!text && !st.attachments.length) return;
   if (st.busy) { toast(ERR_TEXT.E_LOOP_BUSY); return; }
   if (!st.currentSessionId) { toast('请先新建或选择一个会话'); return; }
+  // @ 引用：文本里保留 @path（可读），内容注入由后端完成
+  const contextFiles = [...new Set([...text.matchAll(/@([^\s，。；）】]+)/g)].map((m) => m[1]))].slice(0, 5);
+  // 附件 → 多模态分片
+  let message;
+  const atts = st.attachments.splice(0);
+  renderAttachChips();
   el.input.value = ''; autoGrow();
-  addUserBlock(content, { queuedPending: true });
+  addUserBlock(text || (atts.length ? '[附件]' : ''), { attachments: atts });
   setBusy(true);
   startThink();
   showStatusCard();
-  const r = await invoke(window.agentBase.sendMessage({ role: 'user', content, sessionId: st.currentSessionId }), '发送消息');
+  if (atts.length) {
+    const parts = [{ type: 'text', text }];
+    for (const a of atts) {
+      parts.push(a.kind === 'image'
+        ? { type: 'image', mediaType: a.mediaType, data: a.data }
+        : { type: 'text', text: `【附件：${a.name}】\n${a.text}` });
+    }
+    message = { role: 'user', content: parts, sessionId: st.currentSessionId };
+  } else {
+    message = { role: 'user', content: text, sessionId: st.currentSessionId };
+  }
+  if (contextFiles.length) message.contextFiles = contextFiles;
+  const r = await invoke(window.agentBase.sendMessage(message), '发送消息');
   if (!r.ok) { setBusy(false); stopThink(false); hideStatusCard(); return; }
-  // 排队受理：把"已排队"徽标挂到刚发的用户消息上（真正入列）
   if (r.data?.queued) {
     const blocks = msgCol.querySelectorAll('.msg-block-user');
     const last = blocks[blocks.length - 1];
@@ -638,8 +672,7 @@ function renderHistory(messages) {
     if (m.role === 'tool' && m.toolCallId) toolOutput.set(m.toolCallId, m.content);
   }
   for (const m of messages) {
-    if (m.role === 'user') { addUserBlock(m.content); continue; }
-    if (m.role === 'assistant') {
+    if (m.role === 'user') { addUserBlock(m.content); continue; }    if (m.role === 'assistant') {
       if (m.content) {
         ensureMsgCol();
         const block = h('div', 'msg-block-assistant');
@@ -679,7 +712,7 @@ function renderIdentity() {
   el.modelLbl.textContent = info.models[0] || (info.provider ? '默认模型' : '未配置');
   el.btnPolicy.querySelector('.pill-lbl').textContent = POLICY_LABEL[info.permissionMode] || '完全访问';
   el.btnPolicy.classList.toggle('pill-warn', info.permissionMode === 'full');
-  el.btnEffort.querySelector('.pill-lbl').textContent = EFFORT_LABEL[info.maxIterations] || String(info.maxIterations);
+  el.btnEffort.querySelector('.pill-lbl').textContent = info.reasoningEffort ? EFFORT_LABEL[info.reasoningEffort] : '默认';
 }
 function openPolicyMenu() {
   const mode = st.appInfo?.permissionMode || 'full';
@@ -716,22 +749,31 @@ function openModelMenu() {
   openMenu(el.btnModel, items);
 }
 function openEffortMenu() {
-  const cur = st.appInfo?.maxIterations ?? 15;
-  const items = [{ head: '推理力度（循环最大迭代数）' }];
-  for (const [key, iters] of Object.entries(EFFORT_STEPS)) {
+  const cur = st.appInfo?.reasoningEffort;
+  const items = [{ head: '推理力度（透传模型 reasoning 参数）' }];
+  for (const key of ['low', 'medium', 'high']) {
     items.push({
-      ico: '◎', label: EFFORT_LABEL[iters], sub: iters + ' 次迭代',
-      active: cur === iters,
+      ico: '◎', label: EFFORT_LABEL[key],
+      active: cur === key,
       onClick: async () => {
-        const r = await invoke(window.agentBase.setAgentPolicy({ maxIterations: iters }), '调整推理力度');
-        if (r.ok) { await refreshAppInfo(); }
+        const r = await invoke(window.agentBase.setAgentPolicy({ reasoningEffort: key }), '调整推理力度');
+        if (r.ok) { toast('推理力度：' + EFFORT_LABEL[key], 'ok'); await refreshAppInfo(); }
       },
     });
   }
+  items.push({
+    ico: '○', label: '默认', sub: '不透传参数，由模型默认行为决定',
+    active: !cur,
+    onClick: async () => {
+      // 置回 undefined：策略通道不支持删除，用 permissionMode 同调用刷新即可（此处仅提示）
+      toast('如需关闭透传，请在 config.json 删除 reasoningEffort 字段后重启', 'info');
+    },
+  });
   openMenu(el.btnEffort, items);
 }
 function openPlusMenu() {
   openMenu(el.btnPlus, [
+    { ico: '📎', label: '添加附件', sub: '文本或图片（≤4 个）', onClick: pickAttachments },
     { ico: '⊕', label: '新建会话', onClick: newSession },
     '-',
     { ico: '◈', label: '管理模型', onClick: () => openSettings('models') },
@@ -740,7 +782,61 @@ function openPlusMenu() {
   ]);
 }
 
-/* ================= [11] 右侧面板：审查（事件流）/ 审计（audit.log） ================= */
+/* ================= [10.5] @ 上下文引用选择器 ================= */
+const AT_RE = /(^|\s)@([\w\u4e00-\u9fa5\-./\\]*)$/;
+/** 输入以 @query 结尾时弹出工作目录文件选择菜单；选中目录继续下钻 */
+async function maybeOpenAtPicker() {
+  const match = el.input.value.match(AT_RE);
+  if (!match) { if (st.activeMenu?.dataset?.at === '1') closeMenu(); return; }
+  const query = match[2];
+  const r = await invoke(window.agentBase.listWorkspaceFiles({ query }), '搜索文件');
+  if (!r.ok) return;
+  const files = r.data.files.slice(0, 30);
+  if (!files.length) return;
+  const items = [{ head: '引用文件（@路径 会注入文件内容）' }];
+  for (const f of files) {
+    items.push({
+      ico: f.isDir ? '📁' : '📄',
+      label: '@' + f.rel,
+      onClick: () => insertAtSelection(f),
+    });
+  }
+  openMenu(el.input, items);
+  st.activeMenu.dataset.at = '1';
+}
+function insertAtSelection(f) {
+  const before = el.input.value.replace(AT_RE, (_m, sp) => sp + '@');
+  const insert = f.isDir ? f.rel : f.rel + ' ';
+  el.input.value = before + insert;
+  el.input.focus();
+  if (f.isDir) maybeOpenAtPicker(); // 目录：继续下钻
+  autoGrow();
+}
+/** 附件：选文件 → 读内容/图片 → 芯片展示 → 发送时转多模态分片 */
+async function pickAttachments() {
+  const r = await invoke(window.agentBase.pickFiles(), '选择附件');
+  if (!r.ok || !r.data.paths.length) return;
+  for (const p of r.data.paths.slice(0, 4)) {
+    const rr = await invoke(window.agentBase.readAttachment({ path: p }), '读取附件');
+    if (rr.ok) st.attachments.push(rr.data);
+    if (st.attachments.length >= 4) break;
+  }
+  renderAttachChips();
+}
+function renderAttachChips() {
+  el.attachChips.innerHTML = '';
+  el.attachChips.classList.toggle('hidden', !st.attachments.length);
+  st.attachments.forEach((a, idx) => {
+    const chip = h('span', 'attach-chip');
+    chip.appendChild(h('span', null, (a.kind === 'image' ? '🖼 ' : '📎 ') + a.name));
+    const del = h('button', 'a-del', '✕');
+    del.addEventListener('click', () => { st.attachments.splice(idx, 1); renderAttachChips(); });
+    chip.appendChild(del);
+    el.attachChips.appendChild(chip);
+  });
+}
+
+/* ================= [11] 右侧面板：审查（事件流）/ 审计（audit.log）/ 终端 ================= */
 function logEvent(name, payload) {
   let json = '';
   try { json = JSON.stringify(payload); } catch (_e) { json = String(payload); }
@@ -767,6 +863,21 @@ function toggleRightPanel(show) {
   const willShow = show !== undefined ? show : el.rightPanel.classList.contains('hidden');
   el.rightPanel.classList.toggle('hidden', !willShow);
   if (willShow && !el.rpAudit.classList.contains('hidden')) loadAudit();
+  if (willShow && !$('#rp-term').classList.contains('hidden')) startTerminal();
+}
+/** 终端：首次打开即拉起持久 shell；输出追加到滚动区 */
+function startTerminal() {
+  if (st.termStarted) return;
+  st.termStarted = true;
+  window.agentBase.termInput({ command: '' }); // 空命令 = 拉起 shell
+  el.termOut.appendChild(h('div', null, '(输入命令后回车执行)'));
+  el.termIn.focus();
+}
+function onTermData(p) {
+  const text = p?.text ?? '';
+  el.termOut.appendChild(document.createTextNode(text));
+  while (el.termOut.childNodes.length > 1500) el.termOut.firstChild.remove();
+  el.termOut.scrollTop = el.termOut.scrollHeight;
 }
 
 /* ================= [12] 设置页 ================= */
@@ -979,6 +1090,7 @@ function subscribe() {
   api.on('loop-error', onLoopErr);
   api.on('plugins-changed', () => { if (!$('#settings-view').classList.contains('hidden')) renderPluginsPage(); });
   api.on('sessions-changed', onSessionsChanged);
+  api.on('term-data', onTermData);
   api.on('mcp-status-changed', (p) => {
     logEvent('mcp-status-changed', p);
     if (!$('#settings-view').classList.contains('hidden') && !$('#settings-view [data-page="mcp"]').classList.contains('hidden')) renderMcpPage();
@@ -993,8 +1105,10 @@ function init() {
 
   // 输入
   el.sendBtn.addEventListener('click', handleSend);
-  el.input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } });
-  el.input.addEventListener('input', autoGrow);
+  el.input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (!st.activeMenu) handleSend(); else closeMenu(); }
+  });
+  el.input.addEventListener('input', () => { autoGrow(); maybeOpenAtPicker(); });
   el.scStop.addEventListener('click', () => invoke(window.agentBase.stop(), '停止生成'));
 
   // 下拉
@@ -1035,11 +1149,18 @@ function init() {
   el.rpClose.addEventListener('click', () => toggleRightPanel(false));
   document.querySelectorAll('.rp-tab').forEach((t) => t.addEventListener('click', () => {
     document.querySelectorAll('.rp-tab').forEach((x) => x.classList.toggle('active', x === t));
-    $('#rp-events').classList.toggle('hidden', t.dataset.tab !== 'events');
-    el.rpAudit.classList.toggle('hidden', t.dataset.tab !== 'audit');
+    const pages = { events: '#rp-events', audit: '#rp-audit', term: '#rp-term' };
+    Object.entries(pages).forEach(([tab, sel]) => $(sel).classList.toggle('hidden', tab !== t.dataset.tab));
     if (t.dataset.tab === 'audit') loadAudit();
+    if (t.dataset.tab === 'term') { startTerminal(); el.termIn.focus(); }
   }));
   el.rpRefreshAudit.addEventListener('click', loadAudit);
+  el.termIn.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && el.termIn.value.trim()) {
+      window.agentBase.termInput({ command: el.termIn.value });
+      el.termIn.value = '';
+    }
+  });
 
   // 审批
   el.apvOk.addEventListener('click', onApprove);

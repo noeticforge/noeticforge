@@ -1,10 +1,12 @@
-import type { ChatMessage, ChatOptions, LLMProvider, LLMResponse, ToolDefinition } from '../types.js';
+import type { ChatMessage, ChatOptions, ContentPart, LLMProvider, LLMResponse, ToolDefinition } from '../types.js';
 
 interface OpenAICompatibleOptions {
   id: string;
   baseUrl: string;
   apiKey: string;
   model: string;
+  /** 部分兼容网关会对未知字段报错：置 true 则不发送 reasoning_effort */
+  disableReasoningEffort?: boolean;
 }
 
 /**
@@ -36,6 +38,9 @@ export class OpenAICompatibleProvider implements LLMProvider {
         type: 'function',
         function: { name: t.name, description: t.description, parameters: t.parameters },
       }));
+    }
+    if (chatOptions?.reasoningEffort && !this.opts.disableReasoningEffort) {
+      body.reasoning_effort = chatOptions.reasoningEffort;
     }
 
     const res = await fetch(`${this.opts.baseUrl}/chat/completions`, {
@@ -151,7 +156,7 @@ function toApiMessage(msg: ChatMessage): Record<string, unknown> {
   if (msg.role === 'assistant' && msg.toolCalls?.length) {
     return {
       role: 'assistant',
-      content: msg.content || null,
+      content: toTextContent(msg.content) || null,
       tool_calls: msg.toolCalls.map((c) => ({
         id: c.id,
         type: 'function',
@@ -160,9 +165,25 @@ function toApiMessage(msg: ChatMessage): Record<string, unknown> {
     };
   }
   if (msg.role === 'tool') {
-    return { role: 'tool', tool_call_id: msg.toolCallId, content: msg.content };
+    return { role: 'tool', tool_call_id: msg.toolCallId, content: toTextContent(msg.content) };
+  }
+  if (Array.isArray(msg.content)) {
+    // 多模态：文本 + 图片（data URL）
+    return {
+      role: msg.role,
+      content: msg.content.map((p: ContentPart) =>
+        p.type === 'text'
+          ? { type: 'text', text: p.text }
+          : { type: 'image_url', image_url: { url: `data:${p.mediaType};base64,${p.data}` } },
+      ),
+    };
   }
   return { role: msg.role, content: msg.content };
+}
+
+function toTextContent(content: ChatMessage['content']): string {
+  if (typeof content === 'string') return content;
+  return content.map((p) => (p.type === 'text' ? p.text : '[图片]')).join('\n');
 }
 
 function safeParseJson(raw: unknown): Record<string, unknown> {

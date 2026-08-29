@@ -281,6 +281,31 @@ body.theme-dark #sidebar{background:rgba(10,13,26,.42)}
 .btn-send-black:not(:disabled):hover{transform:translateY(-1px)}
 .btn-send-black:not(:disabled):active{transform:scale(.94)}
 
+/* 终端面板 */
+.rp-term{display:flex;flex-direction:column;height:100%;gap:6px}
+#term-out{
+  flex:1;overflow-y:auto;font-family:var(--mono);font-size:11px;line-height:1.55;
+  background:var(--code-bg);border:1px solid var(--code-border);border-radius:10px;padding:9px;
+  white-space:pre-wrap;word-break:break-all;user-select:text;color:var(--txt-dim);
+}
+.term-input-row{display:flex;align-items:center;gap:8px;background:var(--field-bg);border:1px solid var(--field-border);border-radius:10px;padding:6px 10px}
+.term-input-row:focus-within{border-color:var(--active-border)}
+.term-ps{color:var(--accent);font-family:var(--mono);flex:0 0 auto}
+#term-in{flex:1;min-width:0;border:none;background:transparent;outline:none;font-family:var(--mono);font-size:12px;color:var(--txt)}
+
+/* 附件芯片 */
+.attach-chips{display:flex;flex-wrap:wrap;gap:6px;padding:2px 4px 6px}
+.attach-chip{
+  display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--txt-dim);
+  background:var(--pill-bg);border:1px solid var(--pill-border);border-radius:9px;padding:3px 9px;max-width:240px;
+}
+.attach-chip .a-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.attach-chip .a-del{border:none;background:none;color:var(--txt-faint);cursor:pointer;font-size:12px;padding:0}
+.attach-chip .a-del:hover{color:var(--err)}
+
+/* 上下文引用菜单定位辅助 */
+.composer-anchor{position:relative}
+
 /* ================= 右侧标签面板 ================= */
 #right-panel{
   width:340px;flex:0 0 auto;border-left:1px solid var(--sep);display:flex;flex-direction:column;min-height:0;

@@ -25,18 +25,25 @@ export class AnthropicProvider implements LLMProvider {
     const streaming = !!chatOptions?.onChunk;
     const system = messages
       .filter((m) => m.role === 'system')
-      .map((m) => m.content)
+      .map((m) => (typeof m.content === 'string' ? m.content : ''))
       .join('\n\n');
 
     const apiMessages = toAnthropicMessages(
       messages.filter((m) => m.role !== 'system'),
     );
 
+    // 推理力度 → 扩展思考预算；max_tokens 必须大于预算
+    const maxTokens = this.opts.maxTokens ?? 8192;
     const body: Record<string, unknown> = {
       model: this.opts.model,
-      max_tokens: this.opts.maxTokens ?? 8192,
+      max_tokens: maxTokens,
       messages: apiMessages,
     };
+    if (chatOptions?.reasoningEffort) {
+      const budget = { low: 2048, medium: 8192, high: 16384 }[chatOptions.reasoningEffort];
+      body.thinking = { type: 'enabled', budget_tokens: budget };
+      body.max_tokens = Math.max(maxTokens, budget + 1024);
+    }
     if (system) body.system = system;
     if (tools.length > 0) {
       body.tools = tools.map((t) => ({
@@ -205,7 +212,7 @@ function toAnthropicMessages(messages: ChatMessage[]): unknown[] {
       const block = {
         type: 'tool_result',
         tool_use_id: msg.toolCallId,
-        content: msg.content,
+        content: typeof msg.content === 'string' ? msg.content : msg.content.map((p) => (p.type === 'text' ? { type: 'text', text: p.text } : { type: 'image', source: { type: 'base64', media_type: p.mediaType, data: p.data } })),
       };
       const last = out[out.length - 1];
       if (last && last.role === 'user' && Array.isArray(last.content)) {
@@ -217,11 +224,24 @@ function toAnthropicMessages(messages: ChatMessage[]): unknown[] {
     }
     if (msg.role === 'assistant') {
       const content: any[] = [];
-      if (msg.content) content.push({ type: 'text', text: msg.content });
+      const text = typeof msg.content === 'string' ? msg.content : '';
+      if (text) content.push({ type: 'text', text });
       for (const c of msg.toolCalls ?? []) {
         content.push({ type: 'tool_use', id: c.id, name: c.name, input: c.arguments });
       }
       out.push({ role: 'assistant', content: content.length ? content : [{ type: 'text', text: '' }] });
+      continue;
+    }
+    // user：字符串或文本/图片分片
+    if (Array.isArray(msg.content)) {
+      out.push({
+        role: msg.role,
+        content: msg.content.map((p) =>
+          p.type === 'text'
+            ? { type: 'text', text: p.text }
+            : { type: 'image', source: { type: 'base64', media_type: p.mediaType, data: p.data } },
+        ),
+      });
       continue;
     }
     out.push({ role: msg.role, content: msg.content });

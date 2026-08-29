@@ -37,6 +37,12 @@ const INVOKE_CHANNELS = [
   'get-app-info',
   'read-audit',
   'preview-file',
+  // 上下文与附件 / 终端（v0.4）
+  'list-workspace-files',
+  'read-attachment',
+  'pick-files',
+  'term-input',
+  'term-stop',
 ] as const;
 
 const PUSH_CHANNELS = [
@@ -49,6 +55,7 @@ const PUSH_CHANNELS = [
   'plugins-changed',
   'sessions-changed',
   'mcp-status-changed',
+  'term-data',
 ] as const;
 
 type InvokeChannel = (typeof INVOKE_CHANNELS)[number];
@@ -114,6 +121,11 @@ const agentBase = {
   getAppInfo: () => invoke('get-app-info'),
   readAudit: (req?: { lines?: number }) => invoke('read-audit', req),
   previewFile: (req: { path: string }) => invoke('preview-file', req),
+  listWorkspaceFiles: (req?: { query?: string }) => invoke('list-workspace-files', req),
+  readAttachment: (req: { path: string }) => invoke('read-attachment', req),
+  pickFiles: () => invoke('pick-files'),
+  termInput: (req: { command: string }) => ipcRenderer.send('term-input', req),
+  termStop: () => ipcRenderer.send('term-stop'),
 
   // ---- 订阅（主进程 → UI 推送）----
   on,

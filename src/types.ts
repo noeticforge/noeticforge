@@ -6,6 +6,39 @@
 
 export type Role = 'system' | 'user' | 'assistant' | 'tool';
 
+/** 消息内容分片：文本或 base64 图片（多模态输入） */
+export type ContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image'; mediaType: string; data: string };
+
+export type MessageContent = string | ContentPart[];
+
+/** 把消息内容规约成纯文本（估算/摘要/展示用；图片计为占位符） */
+export function contentToText(content: MessageContent): string {
+  if (typeof content === 'string') return content;
+  return content
+    .map((p) => (p.type === 'text' ? p.text : `[图片 ${p.mediaType}]`))
+    .join('\n');
+}
+
+export function isMessageContent(v: unknown): v is MessageContent {
+  if (typeof v === 'string') return true;
+  return (
+    Array.isArray(v) &&
+    v.length > 0 &&
+    v.every(
+      (p) =>
+        p &&
+        typeof p === 'object' &&
+        ((p as ContentPart).type === 'text'
+          ? typeof (p as { text: unknown }).text === 'string'
+          : (p as ContentPart).type === 'image'
+            ? typeof (p as { mediaType: unknown }).mediaType === 'string' && typeof (p as { data: unknown }).data === 'string'
+            : false),
+    )
+  );
+}
+
 /** 模型发起的一次工具调用 */
 export interface ToolCall {
   id: string;
@@ -16,7 +49,7 @@ export interface ToolCall {
 /** 统一消息格式（Provider 负责把它翻译成各家 API 的格式） */
 export interface ChatMessage {
   role: Role;
-  content: string;
+  content: MessageContent;
   /** assistant 消息携带的工具调用列表 */
   toolCalls?: ToolCall[];
   /** role 为 tool 时，对应 ToolCall.id */
@@ -42,6 +75,8 @@ export interface ChatOptions {
   signal?: AbortSignal;
   /** 流式输出：provider 每产出一小段文本就回调一次；非流式 provider 在结束时回调一次全文 */
   onChunk?: (delta: string) => void;
+  /** 推理力度：provider 按自身协议透传（OpenAI 兼容 → reasoning_effort；Anthropic → thinking 预算） */
+  reasoningEffort?: 'low' | 'medium' | 'high';
 }
 
 /** 模型适配器接口：接新厂商 = 实现这一个方法 */
@@ -91,6 +126,8 @@ export interface ToolContext {
   workingDir: string;
   /** 插件在设置页配置的值（由 manifest.settings Schema 约定结构） */
   settings?: Record<string, unknown>;
+  /** 底座注入的宿主服务（如子代理委派 runSubagent） */
+  services?: Record<string, unknown>;
 }
 
 /** 工具：插件提供的最小能力单元 */
@@ -158,4 +195,8 @@ export interface LoopOptions {
   forceApprovalPermissions?: Permission[];
   /** 查询插件设置值（富插件协议 v2）：注入 ToolContext.settings；未配置返回 undefined */
   pluginSettings?: (pluginName: string) => Record<string, unknown> | undefined;
+  /** 推理力度：透传给 provider（见 ChatOptions.reasoningEffort） */
+  reasoningEffort?: 'low' | 'medium' | 'high';
+  /** 追加到 ToolContext 的宿主服务（如 subagent.run 的委派入口） */
+  ctxExtras?: () => Partial<ToolContext> | undefined;
 }

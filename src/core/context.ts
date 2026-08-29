@@ -1,4 +1,4 @@
-import type { ChatMessage } from '../types.js';
+import type { ChatMessage, MessageContent } from '../types.js';
 
 /**
  * 上下文窗口管理（MVP 策略：整轮截断）。
@@ -13,8 +13,14 @@ export function estimateTokens(text: string): number {
   return Math.ceil(text.length * 0.6);
 }
 
+function contentCost(content: MessageContent): number {
+  if (typeof content === 'string') return estimateTokens(content);
+  // 图片按固定 800 token 估算（约一张中等分辨率图的保守值）
+  return content.reduce((sum, p) => sum + (p.type === 'text' ? estimateTokens(p.text) : 800), 0);
+}
+
 export function estimateMessageTokens(msg: ChatMessage): number {
-  let total = estimateTokens(msg.content) + 4;
+  let total = contentCost(msg.content) + 4;
   for (const call of msg.toolCalls ?? []) {
     total += estimateTokens(JSON.stringify(call.arguments ?? {})) + 16;
   }
