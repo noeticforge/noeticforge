@@ -108,6 +108,8 @@ app.whenReady().then(async () => {
   handle('get-app-info', () => service.getAppInfo());
   handle('read-audit', (req) => service.readAudit(req));
   handle('preview-file', (req) => service.previewFile(req));
+  handle('list-workspace-files', (req) => service.listWorkspaceFiles(req));
+  handle('read-attachment', (req) => service.readAttachment(req));
 
   await service.init();
   createWindow();

@@ -1,5 +1,5 @@
 import { mkdtemp, cp, rm, mkdir, writeFile, readFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { AgentService, type PushChannel, type IpcResult } from '../src/electron/agent-service.js';
@@ -492,6 +492,15 @@ async function main(): Promise<void> {
   check(del9.ok === true, 'H2 回归：完成后删除会话成功（守卫路径无崩溃）');
   await new Promise((r) => setTimeout(r, 400)); // 若存在 unhandled rejection，此处进程已挂
   await service9.shutdown();
+
+  // ---------- 14. 通道接线完整性：preload 声明的 invoke 通道必须在 main 有 handle/on 注册 ----------
+  const preloadDist = readFileSync(path.join(projectRoot, 'dist/src/electron/preload.js'), 'utf-8');
+  const mainDist = readFileSync(path.join(projectRoot, 'dist/src/electron/main.js'), 'utf-8');
+  const declared = [
+    ...preloadDist.matchAll(/'(send-message|approve-tool|reject-tool|stop|list-plugins|install-plugin|install-plugin-from-registry|uninstall-plugin|get-plugin-settings|set-plugin-settings|list-sessions|create-session|switch-session|rename-session|delete-session|list-providers|set-model-config|list-mcp-servers|set-mcp-config|toggle-mcp-server|set-agent-policy|get-app-info|read-audit|preview-file|list-workspace-files|read-attachment|pick-files|term-input|term-stop)'/g),
+  ].map((m) => m[1]);
+  const missing = declared.filter((ch) => !mainDist.includes(`handle('${ch}'`) && !mainDist.includes(`on('${ch}'`));
+  check(missing.length === 0, `通道接线完整性：preload 的 ${declared.length} 个通道全部在 main 注册（缺失: ${missing.join(', ') || '无'}）`);
 
   await rm(appDir, { recursive: true, force: true });
   console.log('\nIPC 自测全部通过 🎉');

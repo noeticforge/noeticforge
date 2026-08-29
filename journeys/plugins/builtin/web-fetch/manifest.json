@@ -1,0 +1,9 @@
+{
+  "name": "web-fetch",
+  "version": "0.1.0",
+  "displayName": "网页抓取",
+  "description": "抓取 HTTP/HTTPS 网页或只读接口内容，供模型查阅资料",
+  "author": "agent-base",
+  "permissions": ["net:http"],
+  "entry": "index.js"
+}

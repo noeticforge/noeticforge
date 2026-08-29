@@ -13,3 +13,14 @@ e2e-ws/e2e.txt
 e2e-ws/electron.log
 e2e-ws/mock.log
 e2e-shots/
+journeys/sessions/
+journeys/audit.log
+journeys/e2e.txt
+journeys/out.txt
+journeys/plan.txt
+journeys/mock.log
+electron.log
+journey-out.txt
+journey-shots/
+journeys/last-request.json
+journeys/electron.log

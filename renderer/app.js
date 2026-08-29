@@ -216,7 +216,8 @@ function filteredSessions() {
 function renderSessions() {
   const list = filteredSessions();
   el.sessionList.innerHTML = '';
-  el.sessionEmpty.classList.toggle('hidden', st.sessions.length > 0);
+  el.sessionEmpty.classList.toggle('hidden', list.length > 0);
+  el.sessionEmpty.textContent = st.sessions.length ? '没有匹配的会话' : '暂无会话';
   for (const s of list) {
     const item = h('div', 'session-item' + (s.id === st.currentSessionId ? ' active' : ''));
     item.appendChild(h('span', 'ico-folder', '🗄'));
@@ -231,10 +232,28 @@ function renderSessions() {
     item.appendChild(ops);
     el.sessionList.appendChild(item);
     item.addEventListener('click', () => doSwitchSession(s.id));
-    rn.addEventListener('click', async (e) => {
+    rn.addEventListener('click', (e) => {
       e.stopPropagation();
-      const title = prompt('新的会话名称：', s.title || '');
-      if (title && title.trim()) await invoke(window.agentBase.renameSession({ id: s.id, title: title.trim() }), '重命名会话');
+      // Electron 不支持 window.prompt：用内联输入改名
+      const old = s.title || '';
+      const nameSpan = item.querySelector('.session-name');
+      nameSpan.style.display = 'none';
+      const editor = h('input');
+      editor.value = old;
+      editor.style.cssText = 'flex:1;min-width:0;background:var(--field-bg);border:1px solid var(--active-border);border-radius:6px;padding:2px 6px;font-size:12px;outline:none';
+      main.insertBefore(editor, nameSpan);
+      editor.focus(); editor.select();
+      const commit = async () => {
+        const title = editor.value.trim();
+        editor.remove();
+        nameSpan.style.display = '';
+        if (title && title !== old) await invoke(window.agentBase.renameSession({ id: s.id, title }), '重命名会话');
+      };
+      editor.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter') { ev.preventDefault(); commit(); }
+        if (ev.key === 'Escape') { editor.value = old; commit(); }
+      });
+      editor.addEventListener('blur', commit);
     });
     del.addEventListener('click', async (e) => {
       e.stopPropagation();
@@ -350,13 +369,12 @@ function addToolRow(toolCallId, name, args) {
   const nm = h('span', 't-name', name);
   const sum = h('span', 't-summary', argsSummary(args));
   const dur = h('span', 't-dur', '');
-  head.append(ico, nm, sum, dur);
-  row.appendChild(head);
+  head.append(ico, nm, sum, dur);  row.appendChild(head);
   const out = h('div', 'tool-row-output hidden');
   row.appendChild(out);
   msgCol.appendChild(row);
   msgCol.appendChild(h('div', 'msg-gap'));
-  st.tools.set(toolCallId, { row, ico, dur, out, name, t0: Date.now(), output: '', ok: null });
+  st.tools.set(toolCallId, { row, ico, dur, out, sum, name, t0: Date.now(), output: '', ok: null });
   row.addEventListener('click', () => {
     if (!out.textContent && st.tools.get(toolCallId)) {
       out.textContent = '';
@@ -377,6 +395,8 @@ function finishToolRow(toolCallId, result) {
   t.row.classList.add(t.ok ? 'tool-row-ok' : 'tool-row-fail');
   t.ico.textContent = t.ok ? '✓' : '✗';
   t.dur.textContent = (ms / 1000).toFixed(1) + 's';
+  // 失败时把错误码直接亮在行上（用户不用展开就能看到拒绝原因）
+  if (!t.ok && result.error) t.sum.textContent += ' · ' + result.error;
   t.output = result.output || '';
   if (result.render === 'markdown' && typeof marked !== 'undefined') {
     t.out.classList.remove('hidden');
@@ -411,8 +431,8 @@ function freezeThink() {
 }
 function setBusy(busy) {
   st.busy = busy;
-  el.sendBtn.disabled = busy;
-  el.input.placeholder = busy ? '循环进行中…' : '输入消息，Enter 发送，Shift+Enter 换行';
+  // 发送按钮保持可用：忙碌时发送 = 排队（后端 queued）
+  el.input.placeholder = busy ? '循环进行中，继续输入将自动排队…' : '输入消息，Enter 发送，Shift+Enter 换行；@ 引用文件';
 }
 
 /* ================= [8] 进程卡 ================= */
@@ -464,8 +484,9 @@ async function handleSend() {
   const raw = el.input.value;
   const text = raw.trim();
   if (!text && !st.attachments.length) return;
-  if (st.busy) { toast(ERR_TEXT.E_LOOP_BUSY); return; }
+  // 忙碌时不再拒绝：交给后端排队（queued），循环结束按序续发
   if (!st.currentSessionId) { toast('请先新建或选择一个会话'); return; }
+  const wasBusy = st.busy;
   // @ 引用：文本里保留 @path（可读），内容注入由后端完成
   const contextFiles = [...new Set([...text.matchAll(/@([^\s，。；）】]+)/g)].map((m) => m[1]))].slice(0, 5);
   // 附件 → 多模态分片
@@ -473,10 +494,12 @@ async function handleSend() {
   const atts = st.attachments.splice(0);
   renderAttachChips();
   el.input.value = ''; autoGrow();
-  addUserBlock(text || (atts.length ? '[附件]' : ''), { attachments: atts });
-  setBusy(true);
-  startThink();
-  showStatusCard();
+  addUserBlock(text, { attachments: atts, queuedBadge: wasBusy });
+  if (!wasBusy) {
+    setBusy(true);
+    startThink();
+    showStatusCard();
+  }
   if (atts.length) {
     const parts = [{ type: 'text', text }];
     for (const a of atts) {
@@ -496,7 +519,8 @@ async function handleSend() {
     renderAttachChips();
     el.input.value = text;
     autoGrow();
-    setBusy(false); stopThink(false); hideStatusCard();
+    setBusy(wasBusy);
+    if (!wasBusy) { stopThink(false); hideStatusCard(); }
     return;
   }
   if (r.data?.queued) {
@@ -526,6 +550,32 @@ function onToolStart(p) {
 function onToolResult(p) {
   logEvent('tool-result', p);
   if (!isCurrentSession(p)) return;
+  const t = st.tools.get(p.toolCallId);
+  if (!t) {
+    // 权限拒绝 / 工具不存在等场景没有 tool-started 前置行——必须给用户可见的失败反馈
+    ensureMsgCol();
+    const row = h('div', 'tool-row tool-row-fail');
+    const head = h('div', 'tool-row-head');
+    const d = p.result || {};
+    head.append(
+      h('span', 't-ico', '✗'),
+      h('span', 't-name', '工具未执行'),
+      h('span', 't-summary', trunc(d.output || d.error || '被底座拦截', 90)),
+      h('span', 't-dur', d.error || ''),
+    );
+    row.appendChild(head);
+    const out = h('div', 'tool-row-output hidden');
+    row.appendChild(out);
+    row.addEventListener('click', () => {
+      if (!out.textContent) out.appendChild(h('pre', null, trunc(toText(d.output), 4000)));
+      out.classList.toggle('hidden');
+      scrollBottom();
+    });
+    msgCol.appendChild(row);
+    msgCol.appendChild(h('div', 'msg-gap'));
+    scrollBottom();
+    return;
+  }
   finishToolRow(p.toolCallId, p.result || {});
   scDoneTool(p.toolCallId, !!(p.result && p.result.ok));
   // 工具结果已回喂，模型继续思考
@@ -577,7 +627,18 @@ function onApproval(p) {
   const keys = parsed && typeof parsed === 'object' ? Object.keys(parsed) : [];
   el.apvTBody.innerHTML = '';
   if (keys.length) {
-    keys.forEach((k) => el.apvTBody.appendChild(h('tr', null, null)).append(h('td', 'arg-key', k), h('td', 'arg-val', toText(parsed[k]))));
+    keys.forEach((k) => {
+      const tr = document.createElement('tr');
+      tr.appendChild(h('td', 'arg-key', k));
+      // 值可编辑：批准时收集修改后的参数（协议的改参批准能力）
+      const val = h('td', 'arg-val', toText(parsed[k]));
+      val.contentEditable = 'true';
+      val.spellcheck = false;
+      val.dataset.key = k;
+      val.dataset.orig = toText(parsed[k]);
+      tr.appendChild(val);
+      el.apvTBody.appendChild(tr);
+    });
     el.apvTable.classList.remove('hidden'); el.apvRaw.classList.add('hidden');
   } else {
     el.apvTable.classList.add('hidden');
@@ -666,7 +727,28 @@ async function onApprove() {
   const r = st.pending;
   if (!r) return;
   el.apvOk.disabled = true; el.apvNo.disabled = true;
-  await invoke(window.agentBase.approveTool({ messageId: r.messageId, toolCallId: r.toolCallId }), '批准工具');
+  // 收集审批表全部参数（可编辑；批准时按"修改后的完整参数"整体替换——协议 §3.2）
+  const edited = {};
+  let hasEdit = false;
+  el.apvTBody.querySelectorAll('td.arg-val[data-key]').forEach((td) => {
+    const key = td.dataset.key;
+    const now = td.innerText.replace(/\n$/, '');
+    const orig = td.dataset.orig;
+    if (now !== orig) hasEdit = true;
+    // 按原值类型还原：数字/布尔保持类型，其余为字符串
+    let value = now;
+    if (orig !== '') {
+      try {
+        const parsedOrig = JSON.parse(orig);
+        if (typeof parsedOrig === 'number') value = Number.isNaN(Number(now)) ? now : Number(now);
+        else if (typeof parsedOrig === 'boolean') value = now === 'true';
+      } catch { /* 原值为字符串 */ }
+    }
+    edited[key] = value;
+  });
+  const req = { messageId: r.messageId, toolCallId: r.toolCallId };
+  if (hasEdit) req.arguments = edited; // arguments 为整体替换，必须携带全部字段
+  await invoke(window.agentBase.approveTool(req), '批准工具');
   el.apvModal.classList.add('hidden');
   st.pending = null;
 }
@@ -1196,3 +1278,6 @@ function init() {
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
 else init();
+
+// 调试句柄（E2E/接力开发用）：只读访问内部状态，不做任何行为暴露
+window.__ab = { st };
