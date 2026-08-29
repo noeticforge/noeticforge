@@ -1,9 +1,12 @@
 import { readFileSync, rmSync, existsSync } from 'node:fs';
+import http from 'node:http';
 import path from 'node:path';
 import { MockProvider } from '../src/providers/mock.js';
 import { ToolRegistry } from '../src/core/registry.js';
 import { runLoop } from '../src/core/loop.js';
 import { loadPluginsFromRoot } from '../src/plugins/loader.js';
+import { toApiMessage } from '../src/providers/openai-compatible.js';
+import { createProvider } from '../src/providers/provider.js';
 import type { ChatMessage, LoopEvent, LoopOptions } from '../src/types.js';
 
 /**
@@ -226,6 +229,70 @@ async function main(): Promise<void> {
       '场景D：审批时修改的参数真实生效（写入的是 modified-args）',
     );
     rmSync(MODIFIED, { force: true });
+  }
+
+  // ---- 场景组 3：providers 多模态转换 / reasoning_effort 逃生门 / 内置终端 ----
+
+  // A. OpenAI 多模态分片转换
+  {
+    const mm: ChatMessage = {
+      role: 'user',
+      content: [{ type: 'text', text: '看图' }, { type: 'image', mediaType: 'image/png', data: 'AAA' }],
+    };
+    const api = toApiMessage(mm) as { content: Array<{ type: string; text?: string; image_url?: { url: string } }> };
+    check(
+      Array.isArray(api.content) && api.content[1].type === 'image_url' && String(api.content[1].image_url?.url).startsWith('data:image/png;base64,'),
+      'OpenAI 多模态分片 → image_url data URL 转换正确',
+    );
+  }
+
+  // B. reasoning_effort 默认不透传（严格网关兼容），显式开启后透传
+  {
+    const server = http.createServer((req, res) => {
+      let body = '';
+      req.on('data', (d) => (body += d));
+      req.on('end', () => {
+        const parsed = JSON.parse(body || '{}');
+        if ('reasoning_effort' in parsed) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: { message: 'unknown field reasoning_effort' } }));
+          return;
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ choices: [{ message: { content: 'pong' }, finish_reason: 'stop' }] }));
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const port = (server.address() as { port: number }).port;
+    const mk = (cfg: Record<string, unknown>) =>
+      createProvider({ provider: 'openai-compatible', apiKey: 'x', baseUrl: `http://127.0.0.1:${port}/v1`, model: 'm', ...cfg } as never);
+    const p1 = mk({});
+    const r1 = await p1.chat([{ role: 'user', content: 'ping' }], [], { reasoningEffort: 'high' });
+    check(r1.content === 'pong', 'reasoning_effort 默认不透传 → 严格网关正常对话');
+    const p2 = mk({ enableReasoningEffort: true });
+    let rejected = false;
+    try {
+      await p2.chat([{ role: 'user', content: 'ping' }], [], { reasoningEffort: 'high' });
+    } catch {
+      rejected = true;
+    }
+    check(rejected, 'enableReasoningEffort: true → 显式透传（严格网关按预期拒绝，逃生门语义正确）');
+    server.close();
+  }
+
+  // C. 内置终端后端：持久 shell 执行命令并推流
+  {
+    const { TerminalManager } = await import('../src/electron/terminal.js');
+    let got = '';
+    const tm = new TerminalManager((t) => { got += t; }, process.cwd());
+    tm.start();
+    tm.write('echo TERMOK');
+    const deadline = Date.now() + 10_000;
+    while (!got.includes('TERMOK') && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    tm.stop();
+    check(got.includes('TERMOK'), '终端后端：持久 shell 执行命令并推流（echo TERMOK）');
   }
 
   console.log('\n冒烟测试全部通过 🎉');

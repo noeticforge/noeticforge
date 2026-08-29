@@ -464,6 +464,35 @@ async function main(): Promise<void> {
   check(ws.ok && ws.data!.files.some((f) => f.rel === 'notes.txt'), 'list-workspace-files 命中 notes.txt');
   await service8.shutdown();
 
+  // ---------- 13. 回归：排队多模态保真（H1） + 删会话守卫（H2） ----------
+  const cap3 = new CapturingProvider2([
+    { content: '', toolCalls: [{ id: 'hold1', name: 'write-file.write', arguments: { path: 'held.txt', content: 'x' } }], finishReason: 'tool_calls' },
+    { content: 'queued-ok', toolCalls: [], finishReason: 'stop' },
+  ]);
+  const service9 = new AgentService({ appDir, pushEvent: push, initialProvider: cap3 as unknown as LLMProvider, contextTokenBudget: 30_000 });
+  await service9.init();
+  await service9.createSession({ title: '回归' });
+  const sid9 = unwrap(service9.listSessions()).sessions[0].id;
+  // 第一步：write-file 审批挂起 → 会话进入"忙"态
+  service9.sendMessage({ message: { role: 'user', content: '占住循环' } });
+  await waitFor(() => events.some((e) => e.channel === 'approval-required' && e.payload.toolCallId === 'hold1'), 8000, 'hold1 审批挂起');
+  const mid9b = (events.filter((e) => e.channel === 'approval-required' && e.payload.toolCallId === 'hold1').pop() as { payload: { messageId: string } }).payload.messageId;
+  // H1：多模态消息在忙时入队
+  const s9b = service9.sendMessage({
+    message: { role: 'user', content: [{ type: 'text', text: '排队图片' }, { type: 'image', mediaType: 'image/png', data: 'iVBORw0KGgo=' }] },
+  });
+  check((s9b as { data?: { queued?: boolean } }).data?.queued === true, 'H1 前置：多模态消息在忙时入队');
+  // 第二步：批准挂起的写文件 → 本轮收尾 → 排队消息自动续发
+  await service9.approveTool({ messageId: mid9b, toolCallId: 'hold1' });
+  await waitFor(() => events.some((e) => e.channel === 'loop-done' && e.payload.content === 'queued-ok'), 12_000, 'H1：排队多模态消息自动续发完成');
+  check(cap3.lastUserIsArray === true, 'H1 回归：排队多模态出队后仍为分片数组（不再 JSON 字符串化）');
+
+  // H2：全部完成后删除会话成功且不崩溃（runLoopTask 空守卫 + deleteSession 队列清理）
+  const del9 = await service9.deleteSession({ id: sid9 });
+  check(del9.ok === true, 'H2 回归：完成后删除会话成功（守卫路径无崩溃）');
+  await new Promise((r) => setTimeout(r, 400)); // 若存在 unhandled rejection，此处进程已挂
+  await service9.shutdown();
+
   await rm(appDir, { recursive: true, force: true });
   console.log('\nIPC 自测全部通过 🎉');
 }

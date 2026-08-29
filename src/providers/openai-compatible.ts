@@ -5,8 +5,8 @@ interface OpenAICompatibleOptions {
   baseUrl: string;
   apiKey: string;
   model: string;
-  /** 部分兼容网关会对未知字段报错：置 true 则不发送 reasoning_effort */
-  disableReasoningEffort?: boolean;
+  /** 显式开启后才透传 reasoning_effort（部分严格网关会对未知字段报 400） */
+  enableReasoningEffort?: boolean;
 }
 
 /**
@@ -39,7 +39,7 @@ export class OpenAICompatibleProvider implements LLMProvider {
         function: { name: t.name, description: t.description, parameters: t.parameters },
       }));
     }
-    if (chatOptions?.reasoningEffort && !this.opts.disableReasoningEffort) {
+    if (chatOptions?.reasoningEffort && this.opts.enableReasoningEffort) {
       body.reasoning_effort = chatOptions.reasoningEffort;
     }
 
@@ -152,7 +152,8 @@ async function consumeSseStream(
   return { content, toolCalls, finishReason };
 }
 
-function toApiMessage(msg: ChatMessage): Record<string, unknown> {
+/** 消息 → OpenAI API 格式（导出供冒烟测试覆盖多模态转换） */
+export function toApiMessage(msg: ChatMessage): Record<string, unknown> {
   if (msg.role === 'assistant' && msg.toolCalls?.length) {
     return {
       role: 'assistant',
@@ -191,6 +192,11 @@ function safeParseJson(raw: unknown): Record<string, unknown> {
   try {
     return JSON.parse(raw) as Record<string, unknown>;
   } catch {
-    return {};
+    // 兜底：部分模型流式输出会在字符串值里夹带裸换行（非法 JSON）——转义后重试
+    try {
+      return JSON.parse(raw.replace(/\r\n/g, '\\n').replace(/[\n\r]/g, '\\n')) as Record<string, unknown>;
+    } catch {
+      return {};
+    }
   }
 }

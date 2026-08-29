@@ -1,0 +1,9 @@
+{
+  "name": "shell-exec",
+  "version": "0.1.0",
+  "displayName": "命令执行",
+  "description": "在用户电脑上执行 shell 命令（构建/测试/git 等），执行前必须用户批准",
+  "author": "agent-base",
+  "permissions": ["shell:exec"],
+  "entry": "index.js"
+}

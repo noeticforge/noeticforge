@@ -14,6 +14,7 @@ import { TerminalManager } from './terminal.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 let win: BrowserWindow | null = null;
+let terminal: TerminalManager | null = null;
 const service = new AgentService({
   appDir: process.cwd(),
   pushEvent: (channel, payload) => {
@@ -56,15 +57,16 @@ app.whenReady().then(async () => {
   registerWindowControls(() => win);
 
   // 内置终端：持久 shell 会话，输出推流到右侧面板
-  const terminal = new TerminalManager((text) => {
+  const term = new TerminalManager((text) => {
     if (win && !win.isDestroyed()) win.webContents.send('term-data', { text });
   }, process.cwd());
+  terminal = term;
   ipcMain.on('term-input', (_e, req) => {
     const command = req && typeof req.command === 'string' ? req.command : '';
-    if (command.trim()) terminal.write(command);
-    else terminal.start(); // 空命令 = 拉起 shell
+    if (command.trim()) term.write(command);
+    else term.start(); // 空命令 = 拉起 shell
   });
-  ipcMain.on('term-stop', () => terminal.stop());
+  ipcMain.on('term-stop', () => term.stop());
 
   // 附件选择（原生对话框；读取走 read-attachment 通道）
   handle('pick-files', async () => {
@@ -122,5 +124,11 @@ app.whenReady().then(async () => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
+  void service.shutdown();
+});
+
+// 退出链路兜底：杀掉终端子进程（含 darwin 关窗不退出的场景）
+app.on('before-quit', () => {
+  terminal?.stop();
   void service.shutdown();
 });

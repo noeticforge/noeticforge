@@ -73,9 +73,16 @@ const agentBase = {
   /** 协议版本（UI 启动时校验与底座是否匹配） */
   protocolVersion: 2,
   // ---- 循环与审批（请求返回 {ok:true,data} | {ok:false,error:{code,message,phase}}）----
-  sendMessage: (req: { message: { role: 'user'; content: string }; sessionId?: string }) =>
-    invoke<{ messageId: string } | { ok: false; error: unknown }>('send-message', req),
-  approveTool: (req: { messageId: string; toolCallId: string; arguments?: Record<string, unknown> }) =>
+  sendMessage: (req: {
+    message: {
+      role: 'user';
+      content: string | Array<{ type: 'text'; text: string } | { type: 'image'; mediaType: string; data: string }>;
+    };
+    sessionId?: string;
+    /** @ 引用的文件（相对工作目录），内容由底座读取注入 */
+    contextFiles?: string[];
+  }) =>
+    invoke<{ messageId: string; queued?: boolean } | { ok: false; error: unknown }>('send-message', req),  approveTool: (req: { messageId: string; toolCallId: string; arguments?: Record<string, unknown> }) =>
     invoke('approve-tool', req),
   rejectTool: (req: { messageId: string; toolCallId: string; reason?: string }) =>
     invoke('reject-tool', req),

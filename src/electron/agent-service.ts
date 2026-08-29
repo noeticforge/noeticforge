@@ -304,13 +304,14 @@ export class AgentService {
     return { ok: true, data: null };
   }
 
-  /** §3.13 delete-session：进行中的会话拒绝删除 */
+  /** §3.13 delete-session：进行中的会话拒绝删除；同时丢弃排队消息防止 drain 撞已删会话 */
   async deleteSession(req: { id: string }): Promise<IpcResult<null>> {
     const id = req?.id;
     if (!this.store.get(id)) return err('E_SESSION_NOT_FOUND', `会话不存在: ${id}`, 'session');
     if (this.running.has(id)) {
       return err('E_SESSION_IN_USE', '该会话有正在进行的任务，请先停止再删除', 'session');
     }
+    this.queues.delete(id); // 防竞态：drain 时会话已不存在会导致空解引用
     await this.store.remove(id);
     if (this.activeSessionId === id) {
       this.activeSessionId = this.store.list()[0]?.id ?? null;
@@ -368,7 +369,7 @@ export class AgentService {
     const messageId = `${this.sessionPrefix}-m${++this.messageCounter}`;
     if (this.running.has(session.id)) {
       const q = this.queues.get(session.id) ?? [];
-      q.push(typeof content === 'string' ? content : JSON.stringify(content));
+      q.push(content); // 队列存原始 MessageContent（多模态分片原样保留）
       this.queues.set(session.id, q);
       return { ok: true, data: { messageId, queued: true } };
     }
@@ -878,8 +879,8 @@ export class AgentService {
       for (const entry of entries) {
         if (out.length >= 200) return;
         if (entry.name.startsWith('.') && entry.name !== '.gitignore') continue;
+        if (SKIP.has(entry.name)) continue; // 构建产物/依赖目录任何层级都跳过（含根层 node_modules）
         const rel = relBase ? `${relBase}/${entry.name}` : entry.name;
-        if (depth > 0 && SKIP.has(entry.name)) continue;
         if (entry.isDirectory()) {
           out.push({ name: entry.name, rel: rel + '/', isDir: true });
           await walk(path.join(dir, entry.name), rel, depth + 1);
@@ -966,7 +967,8 @@ export class AgentService {
 
   private async runLoopTask(sessionId: string, userMessage: MessageContent): Promise<void> {
     const running = this.running.get(sessionId)!;
-    const session = this.store.get(sessionId)!;
+    const session = this.store.get(sessionId);
+    if (!session) return; // 会话已被删除（与队列 drain 的竞态窗口）
     try {
       // 上下文压缩：超预算时把较旧的轮次摘要成一段背景（失败则回退为循环内整轮截断）
       let inputHistory = session.messages;
@@ -1015,6 +1017,12 @@ export class AgentService {
       await this.store.replaceMessages(sessionId, [...session.messages, ...result.history.slice(inputLen)]);
       void this.maybeAutoTitle(sessionId);
     } catch (e) {
+      // 中止/报错也要把用户消息落盘：否则重启后这条消息从历史里消失
+      try {
+        await this.store.appendMessages(sessionId, [{ role: 'user', content: userMessage }]);
+      } catch {
+        // 落盘失败不改变错误处理流程
+      }
       if (running.abort.signal.aborted) {
         // 用户主动 stop() → loop-done(stopped)
         this.pushEvent('loop-done', { messageId: running.messageId, sessionId, content: running.partialContent, stopped: true });

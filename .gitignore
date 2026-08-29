@@ -7,3 +7,9 @@ sessions/
 audit.log
 smoke-test-output.txt
 *.tsbuildinfo
+e2e-ws/sessions/
+e2e-ws/audit.log
+e2e-ws/e2e.txt
+e2e-ws/electron.log
+e2e-ws/mock.log
+e2e-shots/

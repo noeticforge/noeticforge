@@ -154,9 +154,11 @@ async function invoke(p, label) {
 }
 
 /* ================= [4] 下拉菜单组件 ================= */
+let menuSeq = 0; // @ 选择器竞态守卫：只有最新一次请求才允许渲染菜单
 function closeMenu() {
   dropdownRoot.innerHTML = '';
   st.activeMenu = null;
+  menuSeq++;
   document.removeEventListener('mousedown', onMenuDocDown);
   window.removeEventListener('resize', closeMenu);
 }
@@ -427,7 +429,7 @@ function showStatusCard() {
   };
   tick();
 }
-function scAddTool(name) {
+function scAddTool(name, toolCallId) {
   st.scToolCount += 1;
   el.scCount.textContent = st.scDone + '/' + st.scToolCount;
   const item = h('div', 'sc-item run');
@@ -435,15 +437,15 @@ function scAddTool(name) {
   item.appendChild(h('span', 's-lbl', name));
   el.scItems.appendChild(item);
   while (el.scItems.children.length > 6) el.scItems.firstChild.remove();
-  item.dataset.name = name;
+  item.dataset.tcid = toolCallId; // 按 toolCallId 精确配对（内外层同名工具不互串）
   return item;
 }
-function scDoneTool(name, ok) {
+function scDoneTool(toolCallId, ok) {
   st.scDone += 1;
   el.scCount.textContent = st.scDone + '/' + st.scToolCount;
   const items = [...el.scItems.children];
   for (let i = items.length - 1; i >= 0; i--) {
-    if (items[i].dataset.name === name && items[i].classList.contains('run')) {
+    if (items[i].dataset.tcid === toolCallId && items[i].classList.contains('run')) {
       items[i].classList.remove('run');
       items[i].classList.add('done');
       items[i].querySelector('.s-ico').textContent = ok ? '✓' : '✗';
@@ -482,13 +484,21 @@ async function handleSend() {
         ? { type: 'image', mediaType: a.mediaType, data: a.data }
         : { type: 'text', text: `【附件：${a.name}】\n${a.text}` });
     }
-    message = { role: 'user', content: parts, sessionId: st.currentSessionId };
+    message = { message: { role: 'user', content: parts }, sessionId: st.currentSessionId };
   } else {
-    message = { role: 'user', content: text, sessionId: st.currentSessionId };
+    message = { message: { role: 'user', content: text }, sessionId: st.currentSessionId };
   }
   if (contextFiles.length) message.contextFiles = contextFiles;
   const r = await invoke(window.agentBase.sendMessage(message), '发送消息');
-  if (!r.ok) { setBusy(false); stopThink(false); hideStatusCard(); return; }
+  if (!r.ok) {
+    // 失败回滚：附件与文本还给输入框，避免用户重打
+    st.attachments.unshift(...atts);
+    renderAttachChips();
+    el.input.value = text;
+    autoGrow();
+    setBusy(false); stopThink(false); hideStatusCard();
+    return;
+  }
   if (r.data?.queued) {
     const blocks = msgCol.querySelectorAll('.msg-block-user');
     const last = blocks[blocks.length - 1];
@@ -511,13 +521,13 @@ function onToolStart(p) {
   if (!isCurrentSession(p)) return;
   freezeThink();
   addToolRow(p.toolCallId, p.name, p.arguments);
-  scAddTool(p.name);
+  scAddTool(p.name, p.toolCallId);
 }
 function onToolResult(p) {
   logEvent('tool-result', p);
   if (!isCurrentSession(p)) return;
   finishToolRow(p.toolCallId, p.result || {});
-  scDoneTool(st.tools.get(p.toolCallId)?.name || '', !!(p.result && p.result.ok));
+  scDoneTool(p.toolCallId, !!(p.result && p.result.ok));
   // 工具结果已回喂，模型继续思考
   if (st.busy) startThink();
 }
@@ -609,13 +619,18 @@ async function renderApprovalDiff(name, parsedArgs) {
   head.append(h('span', null, targetPath), h('span', 'diff-stat-add', `+${addCount}`), h('span', 'diff-stat-del', `−${delCount}`));
   box.append(head);
   const body = h('div', 'apv-diff-body');
-  const shown = diff.filter((d) => d[0] !== 'ctx' || true);
-  let ctxRun = 0;
-  const renderRows = shown.slice(0, 400);
-  renderRows.forEach(([kind, tx], idx) => {
-    body.appendChild(diffRow(kind, tx, String(kind === 'add' ? oldLines.length + idx : idx + 1)));
-  });
-  if (shown.length > 400) body.appendChild(h('div', 'diff-more', `…其余 ${shown.length - 400} 行`));
+  let oldNo = 0, newNo = 0;
+  const MAX_ROWS = 400;
+  let shown = 0, omitted = 0;
+  for (const [kind, tx] of diff) {
+    if (kind === 'ctx' && shown > 60 && shown < diff.length - 10) { omitted++; oldNo++; newNo++; continue; } // 中段上下文折叠
+    if (shown >= MAX_ROWS) { omitted++; if (kind === 'del') oldNo++; else if (kind === 'add') newNo++; else { oldNo++; newNo++; } continue; }
+    if (kind === 'del') { oldNo++; body.appendChild(diffRow(kind, tx, String(oldNo))); }
+    else if (kind === 'add') { newNo++; body.appendChild(diffRow(kind, tx, String(newNo))); }
+    else { oldNo++; newNo++; body.appendChild(diffRow(kind, tx, String(newNo))); }
+    shown++;
+  }
+  if (omitted > 0) body.appendChild(h('div', 'diff-more', `…省略 ${omitted} 行`));
   box.appendChild(body);
   box.classList.remove('hidden');
 }
@@ -757,17 +772,14 @@ function openEffortMenu() {
       active: cur === key,
       onClick: async () => {
         const r = await invoke(window.agentBase.setAgentPolicy({ reasoningEffort: key }), '调整推理力度');
-        if (r.ok) { toast('推理力度：' + EFFORT_LABEL[key], 'ok'); await refreshAppInfo(); }
+        if (r.ok) { toast('推理力度：' + EFFORT_LABEL[key] + (st.appInfo?.provider === 'anthropic' ? '' : '（OpenAI 兼容端点需 config.json 开启 enableReasoningEffort）'), 'ok'); await refreshAppInfo(); }
       },
     });
   }
   items.push({
     ico: '○', label: '默认', sub: '不透传参数，由模型默认行为决定',
     active: !cur,
-    onClick: async () => {
-      // 置回 undefined：策略通道不支持删除，用 permissionMode 同调用刷新即可（此处仅提示）
-      toast('如需关闭透传，请在 config.json 删除 reasoningEffort 字段后重启', 'info');
-    },
+    onClick: () => toast('当前为默认（不透传）。设置推理力度后即自动透传。', 'info'),
   });
   openMenu(el.btnEffort, items);
 }
@@ -784,13 +796,15 @@ function openPlusMenu() {
 
 /* ================= [10.5] @ 上下文引用选择器 ================= */
 const AT_RE = /(^|\s)@([\w\u4e00-\u9fa5\-./\\]*)$/;
-/** 输入以 @query 结尾时弹出工作目录文件选择菜单；选中目录继续下钻 */
+/** 输入以 @query 结尾时弹出工作目录文件选择菜单；选中目录继续下钻（带竞态守卫） */
 async function maybeOpenAtPicker() {
   const match = el.input.value.match(AT_RE);
   if (!match) { if (st.activeMenu?.dataset?.at === '1') closeMenu(); return; }
   const query = match[2];
+  const mySeq = ++menuSeq;
   const r = await invoke(window.agentBase.listWorkspaceFiles({ query }), '搜索文件');
   if (!r.ok) return;
+  if (mySeq !== menuSeq) return; // 已有更新的输入事件，丢弃迟到响应
   const files = r.data.files.slice(0, 30);
   if (!files.length) return;
   const items = [{ head: '引用文件（@路径 会注入文件内容）' }];

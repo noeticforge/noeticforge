@@ -14,6 +14,8 @@ export interface ProviderConfig {
   baseUrl?: string;
   /** Anthropic Messages API 的 max_tokens（缺省 8192） */
   maxTokens?: number;
+  /** OpenAI 兼容端点透传 reasoning_effort（默认关闭：部分严格网关会对未知字段报 400） */
+  enableReasoningEffort?: boolean;
 }
 
 /** 切换模型 = 改配置文件，代码零改动 */

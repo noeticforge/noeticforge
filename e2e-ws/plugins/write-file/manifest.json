@@ -1,0 +1,9 @@
+{
+  "name": "write-file",
+  "version": "0.1.0",
+  "displayName": "文件写入",
+  "description": "把文本内容写入本地文件（覆盖写）",
+  "author": "agent-base",
+  "permissions": ["fs:write"],
+  "entry": "index.js"
+}

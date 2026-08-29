@@ -34,6 +34,8 @@ function openaiCompatible(cfg: ProviderConfig, fallbacks: { baseUrl: string; mod
     baseUrl: cfg.baseUrl ?? fallbacks.baseUrl,
     apiKey: cfg.apiKey!,
     model: cfg.model ?? fallbacks.model,
+    // reasoning_effort 透传默认关闭：严格网关会对未知字段报 400，需在 config.json 显式开启
+    enableReasoningEffort: cfg.enableReasoningEffort === true,
   });
 }
 

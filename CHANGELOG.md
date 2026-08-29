@@ -4,6 +4,22 @@
 
 ## [未发布]
 
+### 修复（深度审查批次）
+- **对话全挂的根因**：渲染层 send-message 发裸消息对象，而协议要求 `{ message, sessionId }` 包装——所有普通文本消息被误判 E_INVALID_MESSAGE；已修正并补端到端验证（mock OpenAI 服务器 + 真实 UI 全链路）
+- 排队的多模态消息被 JSON.stringify 成字符串（出队后图片丢失）→ 队列保存原始分片
+- deleteSession 不清队列 + runLoopTask 空会话非空断言 → 竞态下主进程崩溃风险；两侧加守卫
+- reasoning_effort 透传改为 **opt-in**（config.json `enableReasoningEffort: true`）：默认不发送，严格网关不再 400（Anthropic thinking 不受影响）
+- 退出不杀终端子进程（孤儿 cmd.exe）→ before-quit 兜底
+- listWorkspaceFiles 根层遍历 node_modules → 任何层级跳过
+- 中止/报错时当轮用户消息不落盘 → catch 路径补落盘
+- 附件发送失败不回滚 → 失败后附件与文本还给输入框
+- diff 行号错算 → 正确双侧行号 + 中段上下文折叠
+- @ 选择器竞态（迟到响应覆盖新菜单）→ 序号守卫
+- 进程卡同名工具状态互串 → 按 toolCallId 配对
+- safeParseJson 兜底：模型流式参数夹带裸换行（非法 JSON）时转义重试（DeepSeek 历史问题）
+- 协议文档补齐 §8（策略/附件/终端/子代理/持久化语义）；registry/README 信任边界补充
+- preload sendMessage 类型对齐协议（多模态 content + contextFiles）
+
 ### 新增（v0.4 对标补齐批次）
 - **子代理编排**：`subagent.run` 工具把子任务委托给隔离的 Agent 循环——子代理拥有全部工具但禁止嵌套派生，工具审批透传到主对话，事件内联可视化；`core-` 前缀插件不可卸载
 - **@ 上下文引用**：输入 `@` 弹出工作目录文件选择菜单（可下钻目录），发送时文件内容自动注入消息尾部（≤5 个文件，单文件 2 万字符）

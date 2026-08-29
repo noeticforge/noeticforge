@@ -604,3 +604,64 @@ interface ProviderMeta { id: string; label: string; requiresBaseUrl: boolean; de
 | `install-plugin-from-registry` | `{ name: string; registryUrl?: string }` | `{ plugin: PluginInfo }`（下载 zip → sha256 校验 → 标准安装） |
 | `get-plugin-settings` | `{ name: string }` | `{ schema: object \| null; values: object \| null }`（schema 来自 manifest.settings） |
 | `set-plugin-settings` | `{ name: string; values: object }` | `null`（落盘 `<appDir>/plugins/settings/<name>.json`，下次工具执行注入 `ctx.settings`） |
+---
+
+## 8. v0.4 协议增补（策略 / 附件 / 终端 / 子代理）
+
+### 8.1 策略通道（invoke）
+
+| 通道名 | 请求 payload | 返回 data |
+|---|---|---|
+| `set-agent-policy` | `{ permissionMode?, maxIterations?, reasoningEffort? }` | `null`（立即生效并持久化 config.json） |
+| `get-app-info` | — | `{ info: AppInfo }` |
+| `read-audit` | `{ lines? }`（默认 200，上限 1000） | `{ lines: string[]; total: number }` |
+| `preview-file` | `{ path }`（绝对或相对工作目录） | `{ exists: boolean; content: string }`（写文件审批 diff 用） |
+
+```typescript
+type PermissionMode = 'ask-before-change' | 'auto-edit' | 'plan' | 'full';
+interface AppInfo {
+  version: string; appDir: string;
+  provider: string | null; model: string | null; models: string[]; baseUrl: string | null;
+  permissionMode: PermissionMode; maxIterations: number;
+  reasoningEffort: 'low' | 'medium' | 'high' | undefined;
+  sessionCount: number; pluginCount: number; mcpCount: number;
+}
+```
+
+**权限模式 → 底座策略映射**：`ask-before-change` = 强制审批 `[fs:write, shell:exec]`；`auto-edit` = `[shell:exec]`；`plan` = 运行时白名单 `[fs:read]`（写/执行/联网被拒）；`full` = 不限制（插件自声明的审批仍生效）。
+**推理力度透传**：OpenAI 兼容端点需在 config.json 显式 `"enableReasoningEffort": true` 才发送 `reasoning_effort`（严格网关兼容）；Anthropic 恒透传 `thinking` 预算（low=2k/medium=8k/high=16k）。
+
+### 8.2 send-message 变更（v0.4）
+
+- 请求增加 `contextFiles?: string[]`（@ 引用的相对路径）：底座读取文件内容（≤5 个 × 2 万字符）注入消息尾部【引用上下文】块
+- `message.content` 支持 `ContentPart[]`（多模态：`{type:'text',text}` / `{type:'image',mediaType,data(base64)}`）
+- 会话忙时不再返回 `E_LOOP_BUSY`，自动排队并返回 `{ messageId, queued: true }`；循环结束按序续发（stop 清空队列）
+- 全部推送事件带 `sessionId`；中止/报错时当轮用户消息也会落盘
+
+### 8.3 附件与文件（invoke）
+
+| 通道名 | 请求 payload | 返回 data |
+|---|---|---|
+| `pick-files` | — | `{ paths: string[] }`（原生多选对话框） |
+| `read-attachment` | `{ path }` | `{ name, kind: 'image'\|'text', mediaType, data?, text? }`（图片 ≤5MB base64；文本 ≤400KB） |
+| `list-workspace-files` | `{ query? }` | `{ files: [{ name, rel, isDir }] }`（浅层遍历工作目录，≤50 条，跳过依赖/构建目录） |
+
+### 8.4 内置终端（单向 + 推送）
+
+| 通道 | 方向 | payload |
+|---|---|---|
+| `term-input` | UI → 主（send） | `{ command }`（空命令 = 拉起持久 shell） |
+| `term-stop` | UI → 主（send） | — |
+| `term-data` | 主 → UI（push） | `{ text }`（stdout/stderr 追加流） |
+
+实现为持久 shell 会话（Windows cmd / POSIX $SHELL），非 PTY：交互式全屏程序不支持。
+
+### 8.5 子代理（工具面，无新通道）
+
+`subagent.run` 工具由底座注册（`core-subagent`，`core-` 前缀不可卸载）：子任务在隔离 runLoop 中执行
+（禁止嵌套派生、共享审批管线与权限策略、工具事件以父 messageId 内联推送），最终答复作为 ToolResult 回喂外层模型。
+
+### 8.6 消息持久化语义（v0.4）
+
+- 会话文件 `<appDir>/sessions/<id>.json` 全量保存（含多模态分片）
+- 上下文压缩/裁剪只影响发给模型的内容；中止或报错时当轮用户消息仍会落盘
