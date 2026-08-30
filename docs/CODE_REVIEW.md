@@ -3,7 +3,12 @@
 > 审查人：Ljj041120（接管维护）
 > 审查范围：v0.4.0 全量源码（src / renderer / plugins / scripts / CI 配置），基线 = 提取自 xmh.zip 的工作区快照
 > 性质：维护性审查（测试覆盖 + 代码审查 + 保守修复），**不加新功能，红线是不引入新 bug**
-> 每项修复都以 4 条测试防线 + 新增单元测试 + journeys E2E 兜底验证
+> 每项修复都以测试防线 + 新增单元测试 + journeys E2E 兜底验证
+>
+> **后续轮次追踪（2026-08-30 更新）**：
+> - §三.C 的最大欠账（agent-service 1252 行 / app.js 1283 行超标）已由协作者何惜在「模块化拆分轮」清偿（全部 ≤300 行，见 docs/REFACTOR_REPORT.md）；
+> - CI 缺 test:window 的盲区已补（何惜轮 Windows runner 跑窗口自测 + J16 窗控旅程）；
+> - 本轮（知识库轮）新增 kb 插件与 17 项单测（tests/kb.test.ts）
 
 ## 一、基线（修复前）
 

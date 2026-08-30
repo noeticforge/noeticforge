@@ -10,8 +10,8 @@
 npm install        # 国内网络先 set ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/
 npm run build
 npm run smoke      # 循环引擎冒烟（不联网）
-npm run test:unit  # vitest 单元测试（核心纯逻辑，不联网）
-npm run test:ipc   # IPC 协议自测 89 项（不联网）
+npm run test:unit  # vitest 单元测试 77 项（核心纯逻辑 + 知识库，不联网）
+npm run test:ipc   # IPC 协议自测（不联网）
 npm run check:codes  # 错误码三方一致性校验（文档 == 代码 == UI）
 npm run test:window  # 窗口控制自测（本地跑，需要显示器；CI 无头环境不跑）
 ```

@@ -16,19 +16,19 @@ npm run electron                     # 桌面应用（UI 里配置模型即可�
 | 命令 | 测什么 | 需要 |
 |---|---|---|
 | `npm run smoke` | 循环引擎 + providers 多模态转换 + 严格网关兼容 + 终端后端 | 无（离线） |
-| `npm run test:unit` | vitest 单元测试 49 项（上下文裁剪/Schema/注册表/会话存储/Provider 流解析） | 无（离线） |
+| `npm run test:unit` | vitest 单元测试 77 项（上下文裁剪/Schema/注册表/会话存储/Provider 流解析/知识库 kb） | 无（离线） |
 | `npm run test:ipc` | IPC 协议 89 项（含权限模式/排队/压缩/子代理/MCP/通道接线完整性） | 无（离线） |
 | `npm run test:window` | 窗口控制（最小化/最大化/关闭/状态推送） | 桌面环境（**CI 不跑此防线**，必须本地验证） |
 | `npm run check:codes` | 错误码三方一致（事实源=协议文档=UI 文案） | 无（离线） |
 
-**用户视角端到端**（模拟真实模型 + 驱动真实 UI，15 段旅程覆盖全部功能）：
+**用户视角端到端**（模拟真实模型 + 驱动真实 UI，16 段旅程覆盖全部功能）：
 
 ```bash
 # 终端 1：mock 模型服务器（模拟 DeepSeek/OpenAI 的流式与非流式）
 cd journeys && node mock-openai.mjs
 # 终端 2：以 journeys 为工作目录启动应用
 cd journeys && "node_modules 里的 electron" --remote-debugging-port=9226 <项目>/dist/src/electron/main.js
-# 终端 3：跑 15 段旅程
+# 终端 3：跑 16 段旅程
 cd journeys && node e2e-journeys.mjs
 ```
 
@@ -41,14 +41,14 @@ renderer/（UI，可整体替换）── window.agentBase（IPC 协议，docs/I
                                                                                         ▼
 src/electron/main.ts（薄转发 + 窗控 + 终端 + 附件对话框）
 src/electron/agent-service.ts（全部业务：会话/策略/队列/压缩/子代理/审计）──► core/loop.ts（心脏，勿动）
-src/providers/registry.ts（模型注册表）    src/mcp/manager.ts（MCP 桥）    src/plugins/loader.ts（插件）
+src/providers/registry.ts（模型注册表）    src/mcp/manager.ts（MCP 桥）    src/plugins/loader.ts（插件；内置含 kb 知识库检索）
 ```
 
 ## 四、改代码前必读（铁律）
 
 1. **契约先行**：动 IPC 通道/事件/插件协议，先改 `docs/` 协议文档再动码（CONTRIBUTING 铁律 1）
 2. **`core/loop.ts` 不认识任何具体工具/模型/UI** —— 往里加业务 = 打回
-3. **新增 IPC 通道三件套缺一不可**：preload 声明 + main `handle()` + service 方法。`test:ipc` 第 87 项"通道接线完整性"会自动抓漏（历史教训：v0.4 曾漏注册导致对话全挂）
+3. **新增 IPC 通道三件套缺一不可**：preload 声明 + main `handle()` + service 方法。`test:ipc` 的"通道接线完整性"检查会自动抓漏（当前 66 通道；历史教训：v0.4 曾漏注册导致对话全挂）
 4. **错误码**只能出自 `src/shared/error-codes.ts`（check:codes 强制同步三方）
 5. 工具路径用 `ctx.workingDir`，禁 `process.cwd()`；插件必须 try/catch 返回 ToolResult
 
