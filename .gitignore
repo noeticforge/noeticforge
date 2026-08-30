@@ -24,3 +24,6 @@ journey-out.txt
 journey-shots/
 journeys/last-request.json
 journeys/electron.log
+
+# 知识库插件：索引文件是本地构建产物
+知识库/.kb-index.json

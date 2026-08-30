@@ -2,6 +2,17 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。所有对外行为变化（IPC 通道、事件 payload、插件协议、错误码）都必须记录在此。
 
+## [未发布]（知识库轮次：本地知识库插件，维护者 Ljj041120）
+
+### 新增
+- **kb 知识库插件**（`plugins/builtin/kb`，完全插件化，零底座改动）：
+  - `kb.search`：本地知识库检索（query 留空 = 列清单与统计）；`kb.reindex` 强制重建索引
+  - **代码感知切块**：.ts/.js/.py 按函数/类/装饰器等语法逻辑边界切，文档按标题/段落切；纯 JS，零原生依赖
+  - **双路检索**：关键词（中文子串友好）+ 向量（OpenAI 兼容 `/v1/embeddings`）RRF 融合；embedding 服务不可用自动降级纯关键词，检索不断供
+  - 设置项（富插件协议 v2）：`kbDir` / `chunking` / `embedEnabled` / `embedBaseUrl` / `embedModel`，默认预设 `VTXAI/vtx-embed-7M`（HF 超轻量代码 embedding）
+  - 索引 `知识库/.kb-index.json` 自动构建与失效（mtime 对比），仓库附 `知识库/` 示例目录（3 篇文档）
+- 测试：`tests/kb.test.ts` 17 项（切块边界/余弦/关键词/RRF/索引新鲜度/降级/加载器校验）
+
 ## [未发布]（模块化拆分轮次：协作开发者 何惜）
 
 详见 `docs/REFACTOR_REPORT.md`。本轮为大型重构 + 自动更新功能 + 若干修复；全部离线门禁与 16 段 E2E 通过。
