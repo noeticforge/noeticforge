@@ -2,6 +2,28 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。所有对外行为变化（IPC 通道、事件 payload、插件协议、错误码）都必须记录在此。
 
+## [未发布]（模块化拆分轮次：协作开发者 何惜）
+
+详见 `docs/REFACTOR_REPORT.md`。本轮为大型重构 + 自动更新功能 + 若干修复；全部离线门禁与 16 段 E2E 通过。
+
+### 重构
+- **后端**：`agent-service.ts` 1287 行 → 293 行门面 + `types.ts` 与 7 个 `services/` 领域模块（全部 ≤300 行）；门面对 main/preload 的方法签名 100% 不变，running 锁与排队仲裁保留在门面
+- **前端**：`renderer/app.js` 1284 行 → 145 行 ESM 主入口 + 10 个 `renderer/modules/` 模块（全部 ≤300 行）；index.html 切换 `<script type="module">`（无构建约束下的方案对比后选定）
+
+### 新增
+- **自动更新**（Roadmap，默认关闭）：`src/electron/updater.ts` + IPC 四通道（check/download/install/get-updater-state）+ `updater-state` 推送；强制 `autoDownload=false`、`autoInstallOnAppQuit=false`，下载与安装均需用户确认，无静默路径；`config.json` `autoUpdate.enabled` 控制
+- **CI 窗口自测**：test job 增加 `Window selftest`（仅 Windows runner）+ `timeout-minutes: 10`——win32「逻辑最大化」分支首次获得 CI 防线
+- **journeys J16 窗控旅程**：最大化/还原/最小化/关闭 + `win:state` 推送断言；平台相关项警告降级，README 更新为 16 段
+
+### 修复
+- `JOURNEY-README-MARKER` 在 50e7d5a 文档清理中被误删导致全量 E2E 从 J3 起必挂：按 3e4f567 原版式恢复
+- 错误码扫描器写死旧路径，拆分后防线失效（后端使用 19→6、UI 覆盖 22→0）：改为扫描 `src/electron/services/*.ts` 与 `renderer/modules/*.js`，恢复 22/19/22
+- J8 会话切换竞态：`onLoopDone` 将 `setBusy(false)` 提前到文本渲染之前，消除 E2E 观察窗口期的忙态吞切换
+- 会话内联改名 commit 双触发（Enter+blur）二次 remove 抛 NotFoundError：加一次性提交守卫
+- electron-updater 的 `autoUpdater` 为懒加载 getter 导出，ESM 命名导入致应用启动即崩：改默认导入 + 解构（该崩溃仅 E2E 真实启动可捕获，test:window 独立入口不加载 main.ts）
+- `electron-builder.yml` publish owner/repo 修正为 noeticforge/noeticforge（原 agent-base 与实际仓库不符）；补 `private: true`（私有仓库必须）
+- `scripts/ipc-selftest.ts` 纳入 updater 4 通道，接线完整性检查 58 → 66 通道
+
 ## [未发布]（维护轮次：测试覆盖 + 代码审查，维护者 Ljj041120）
 
 详见 `docs/CODE_REVIEW.md`。本轮为维护性修改：只修问题、补测试，无新功能。
