@@ -43,6 +43,11 @@ const INVOKE_CHANNELS = [
   'pick-files',
   'term-input',
   'term-stop',
+  // 自动更新（v0.4，默认关闭）
+  'check-updates',
+  'download-update',
+  'install-update',
+  'get-updater-state',
 ] as const;
 
 const PUSH_CHANNELS = [
@@ -56,6 +61,7 @@ const PUSH_CHANNELS = [
   'sessions-changed',
   'mcp-status-changed',
   'term-data',
+  'updater-state',
 ] as const;
 
 type InvokeChannel = (typeof INVOKE_CHANNELS)[number];
@@ -133,6 +139,12 @@ const agentBase = {
   pickFiles: () => invoke('pick-files'),
   termInput: (req: { command: string }) => ipcRenderer.send('term-input', req),
   termStop: () => ipcRenderer.send('term-stop'),
+
+  // ---- 自动更新（默认关闭；只读 API，无任何静默安装入口）----
+  checkUpdates: () => invoke('check-updates'),
+  downloadUpdate: () => invoke('download-update'),
+  installUpdate: () => invoke('install-update'),
+  getUpdaterState: () => invoke('get-updater-state'),
 
   // ---- 订阅（主进程 → UI 推送）----
   on,

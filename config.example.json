@@ -2,5 +2,8 @@
   "provider": "deepseek",
   "apiKey": "sk-把这里换成你的密钥",
   "model": "deepseek-chat",
-  "baseUrl": "https://api.deepseek.com/v1"
+  "baseUrl": "https://api.deepseek.com/v1",
+  "autoUpdate": {
+    "enabled": false
+  }
 }

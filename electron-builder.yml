@@ -33,3 +33,11 @@ linux:
   category: Utility
 publish:
   provider: github
+  # 私有仓库：打包生成的 app-update.yml 必须显式标记 private，
+  # 运行端由 electron-updater 读取 GH_TOKEN/GITHUB_TOKEN 后走 PrivateGitHubProvider。
+  # 私有仓库：发布时需 GH_TOKEN/GITHUB_TOKEN（electron-builder --publish always），
+  # 运行时检查更新由 electron-updater 读取 app-update.yml（打包时自动生成）里的此配置。
+  # owner/repo 已按实际仓库 noeticforge/noeticforge 修正。
+  private: true
+  owner: noeticforge
+  repo: noeticforge
