@@ -16,6 +16,7 @@
   - **双路检索**：关键词（中文子串友好）+ 向量（OpenAI 兼容 `/v1/embeddings`）RRF 融合；embedding 服务不可用自动降级纯关键词，检索不断供
   - 设置项（富插件协议 v2）：`kbDir` / `chunking` / `embedEnabled` / `embedBaseUrl` / `embedModel`，默认预设 `VTXAI/vtx-embed-7M`（HF 超轻量代码 embedding）
   - 索引 `知识库/.kb-index.json` 自动构建与失效（mtime 对比），仓库附 `知识库/` 示例目录（3 篇文档）
+- **本地 embedding 服务脚本**（`scripts/serve-vtx-embed.py`，`npm run serve:vtx`）：OpenAI 兼容的 `/v1/embeddings` 端点，自动拉取并加载 `VTXAI/vtx-embed-7M`，纯标准库 HTTP 服务零额外 Web 框架依赖
 - 测试：`tests/kb.test.ts` 17 项（切块边界/余弦/关键词/RRF/索引新鲜度/降级/加载器校验）
 
 ### 模块化拆分轮（何惜，PR #1）

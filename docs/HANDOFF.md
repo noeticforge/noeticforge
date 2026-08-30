@@ -9,6 +9,9 @@
 npm install                          # 国内网络先 set ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/
 npm run build
 npm run electron                     # 桌面应用（UI 里配置模型即可对话）
+
+# 可选：一键启动本地知识库向量服务（VTXAI/vtx-embed-7M 4.7MB，自动缓存）
+npm run serve:vtx                    # 启动 http://127.0.0.1:8000/v1/embeddings
 ```
 
 ## 二、五条测试防线（改代码必跑，CI 会卡）

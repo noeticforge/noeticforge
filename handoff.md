@@ -26,7 +26,7 @@
 - 双路检索：关键词 + 向量（OpenAI 兼容 `/v1/embeddings`，默认预设 **VTXAI/vtx-embed-7M**，HF 超轻量代码 embedding）RRF 融合；**embedding 不在线自动降级纯关键词**；
 - 设置项（插件设置页）：kbDir / chunking / embedEnabled / embedBaseUrl / embedModel；
 - 用法：文档丢进 `知识库/`（仓库附 3 篇示例），对话里问即可；索引 `.kb-index.json` 自动失效重建。
-- 向量模式需自建 embedding 服务（Python 包 vtx-embed-7M 成 `/v1/embeddings`），未建则纯关键词照样可用。
+- 向量模式：`npm run serve:vtx`（一键拉取并在本地启动 `VTXAI/vtx-embed-7M` 4.7MB 服务，端口 8000）；未启动时纯关键词模式自动降级兜底。
 4. 所有 markdown 文档已同步更新（README / CHANGELOG / CONTRIBUTING / docs/* / journeys/README）。
 
 ## 二、这轮修了什么（细节见 CODE_REVIEW.md）
@@ -76,7 +76,7 @@ E2E（用户视角 16 段旅程）：跑法与**重跑前必做的清理**见 [`
 
 1. ~~`agent-service.ts` 1252 行拆分~~ → **已由协作者何惜在模块化拆分轮完成**（全部 ≤300 行）；剩余 Roadmap 项：插件受控执行 API（真沙箱）、插件签名与信任分级——需维护者拍板安全架构选型；
 2. ~~自动更新的发布侧动作~~ → **维护者定调：纯代码分发，不发安装包**；`release.yml` 自动打包工作流已从仓库彻底移除，杜绝任何 tag 触发打包；
-3. 知识库向量模式落地：Python 包 vtx-embed-7M 为 `/v1/embeddings` 服务（写好脚本即可切换，未建时纯关键词模式已开箱即用）；
+3. ~~知识库向量模式落地~~ → **已完成**：`scripts/serve-vtx-embed.py` 已提供 OpenAI 兼容的 `/v1/embeddings` 本地服务，`npm run serve:vtx` 一键拉取模型并启动，全链路 256 维向量检索验证通过；未启动时纯关键词模式自动降级；
 4. `live:check` 真模型联测（需真实 API Key，历轮验证均基于 mock）；
 5. CI 窗口自测稳定性观察（Windows runner 偶发风险，必要时加重试）；
 6. **网络环境备忘**：GitHub API（api.github.com）在本机直连易超时，走本地代理 `https://proxy=http://127.0.0.1:7897`（Clash 混合端口）；git push 主站通道不受影响。

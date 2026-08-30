@@ -17,6 +17,7 @@
     "test:ipc": "node dist/scripts/ipc-selftest.js",
     "test:window": "electron dist/scripts/window-selftest.js",
     "check:codes": "node scripts/check-error-codes.mjs",
+    "serve:vtx": "python scripts/serve-vtx-embed.py",
     "live:check": "node dist/scripts/live-check.js",
     "dist": "electron-builder",
     "electron": "electron dist/src/electron/main.js"
