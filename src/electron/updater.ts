@@ -6,8 +6,17 @@ import path from 'node:path';
 import electronUpdaterModule from 'electron-updater';
 import type { AppUpdater, ProgressInfo, UpdateInfo } from 'electron-updater';
 
-const { autoUpdater } = electronUpdaterModule as typeof import('electron-updater');
 import type { IpcResult } from './agent-service.js';
+
+/**
+ * 惰性获取真实 autoUpdater。electron-updater 对 autoUpdater 是懒加载 getter，
+ * 一旦访问就实例化平台 Updater，其构造依赖 Electron 的 app——
+ * 因此绝不能在模块加载期解构（vitest/CI 等非 Electron 环境会启动即崩），
+ * 只能在 Electron 主进程内、且功能启用时才调用本函数。
+ */
+export function resolveAutoUpdater(): AppUpdater {
+  return (electronUpdaterModule as typeof import('electron-updater')).autoUpdater;
+}
 
 /**
  * electron-updater 封装（Roadmap 遗留项）。
@@ -98,7 +107,7 @@ export class UpdateManager {
     this.appDir = appDir;
     this.push = push;
     this.enabled = readEnabled(appDir);
-    this.updater = updater ?? autoUpdater;
+    this.updater = updater ?? resolveAutoUpdater();
     this.state = {
       status: this.enabled ? 'idle' : 'disabled',
       enabled: this.enabled,
