@@ -2,7 +2,12 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。所有对外行为变化（IPC 通道、事件 payload、插件协议、错误码）都必须记录在此。
 
-## [未发布]（知识库轮次：本地知识库插件，维护者 Ljj041120）
+## [0.5.0] - 2026-08-30
+
+> 本版本由三个轮次累积而成：知识库轮（Ljj041120）+ 模块化拆分轮（何惜）+ 维护轮（Ljj041120）。
+> 发布内容按轮次分节如下；各轮详细报告见 `docs/CODE_REVIEW.md` 与 `docs/REFACTOR_REPORT.md`。
+
+### 知识库轮（Ljj041120）
 
 ### 新增
 - **kb 知识库插件**（`plugins/builtin/kb`，完全插件化，零底座改动）：
@@ -13,7 +18,7 @@
   - 索引 `知识库/.kb-index.json` 自动构建与失效（mtime 对比），仓库附 `知识库/` 示例目录（3 篇文档）
 - 测试：`tests/kb.test.ts` 17 项（切块边界/余弦/关键词/RRF/索引新鲜度/降级/加载器校验）
 
-## [未发布]（模块化拆分轮次：协作开发者 何惜）
+### 模块化拆分轮（何惜，PR #1）
 
 详见 `docs/REFACTOR_REPORT.md`。本轮为大型重构 + 自动更新功能 + 若干修复；全部离线门禁与 16 段 E2E 通过。
 
@@ -35,7 +40,7 @@
 - `electron-builder.yml` publish owner/repo 修正为 noeticforge/noeticforge（原 agent-base 与实际仓库不符）；补 `private: true`（私有仓库必须）
 - `scripts/ipc-selftest.ts` 纳入 updater 4 通道，接线完整性检查 58 → 66 通道
 
-## [未发布]（维护轮次：测试覆盖 + 代码审查，维护者 Ljj041120）
+### 维护轮（Ljj041120）
 
 详见 `docs/CODE_REVIEW.md`。本轮为维护性修改：只修问题、补测试，无新功能。
 

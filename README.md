@@ -161,6 +161,8 @@ npm run dist
 - [x] MCP 客户端桥（stdio/HTTP、注解→审批映射、断线重连）+ 审计日志
 - [x] Anthropic 流式 + max_tokens 配置化
 - [x] 插件 SDK / 模板 / registry（PR 投稿 + sha256）
-- [ ] electron-builder 打包分发与自动更新（配置已备，首次发布待签名策略定夺）
+- [x] 大文件模块化拆分（v0.5.0：agent-service/app.js 全部 ≤300 行领域模块）
+- [x] 本地知识库 kb 插件（v0.5.0：代码感知切块 + 关键词/向量双路检索，纯插件化）
+- [x] electron-builder 打包分发与自动更新（v0.5.0：electron-updater 已集成，默认关闭；发布侧动作见 docs/REFACTOR_REPORT.md §五.3）
 - [ ] 插件受控执行 API（带权限校验的文件句柄）与 utilityProcess 进程池
 - [ ] 插件签名（minisign/Sigstore）与信任分级
