@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { AgentService } from './agent-service.js';
 import { registerWindowControls, attachWindowStatePush } from './window-controls.js';
 import { TerminalManager } from './terminal.js';
+import { UpdateManager } from './updater.js';
 
 /**
  * Electron 主进程：唯一的职责是把 ipcMain 通道接到 AgentService 上、把推送转发给窗口。
@@ -15,6 +16,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 let win: BrowserWindow | null = null;
 let terminal: TerminalManager | null = null;
+let updater: UpdateManager | null = null;
 const service = new AgentService({
   appDir: process.cwd(),
   pushEvent: (channel, payload) => {
@@ -67,6 +69,18 @@ app.whenReady().then(async () => {
     else term.start(); // 空命令 = 拉起 shell
   });
   ipcMain.on('term-stop', () => term.stop());
+
+  // 自动更新（默认关闭；仅 config.json autoUpdate.enabled=true 时启用）
+  updater = new UpdateManager(process.cwd(), (channel, payload) => {
+    if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
+  });
+  handle('check-updates', () => updater!.checkUpdates());
+  handle('download-update', () => updater!.downloadUpdate());
+  handle('install-update', () => updater!.installUpdate());
+  handle('get-updater-state', () => updater!.getState());
+  if (updater.isEnabled()) {
+    void updater.init();
+  }
 
   // 附件选择（原生对话框；读取走 read-attachment 通道）
   handle('pick-files', async () => {
