@@ -2,8 +2,8 @@
 
 > **⚠️ 本文件是一次性交接文档，读完即可删除**（正式文档在 `docs/` 目录，本文件与之重复的部分以 `docs/` 为准）。
 >
-> 交接人：AI 维护助手（代理维护者 Ljj041120 执行）　日期：2026-08-29
-> 项目：**agent-base** v0.4.0 —— 开源桌面端 AI Agent 壳（TypeScript + Node.js + Electron）
+> 交接人：AI 维护助手（代理维护者 Ljj041120 执行）　日期：2026-08-30
+> 项目：**agent-base** v0.5.0 —— 开源桌面端 AI Agent 壳（TypeScript + Node.js + Electron）
 
 ---
 
@@ -11,11 +11,11 @@
 
 1. 项目从原开发者的压缩包（xmh.zip）提取，**原开发者署名匿名**（git 历史 `agent-base <dev@agent-base.local>`，按交付文档即"何惜"），git 历史完整保留。
 2. **项目归属 noeticforge 组织，维护者 [@Ljj041120](https://github.com/Ljj041120)**：本轮起的新提交全部以 Ljj041120 身份署名；`package.json` 增加 `contributors`；README/CONTRIBUTING 已标注。
-3. **已发生两轮开发**（详见下）：
+3. **已发生三轮开发，正式定版 v0.5.0**（纯代码版本，零安装包）：
    - **维护轮**（Ljj041120）：全量代码审查 + 修复 8 项真 bug + vitest 单测层，报告在 `docs/CODE_REVIEW.md`；
    - **模块化拆分轮**（协作者 何惜，PR #1）：agent-service/app.js 拆分为 ≤300 行模块 + electron-updater 自动更新（默认关）+ CI 窗口自测 + J16 窗控旅程，报告在 `docs/REFACTOR_REPORT.md`；
    - **知识库轮**（Ljj041120）：本地知识库 kb 插件（代码感知切块 + 关键词/向量双路检索），见下节。
-4. 所有验证通过：smoke ✅ / unit 77 ✅ / ipc ✅ / codes ✅ / window ✅ / journeys E2E ✅ / 云端 CI 4 环境全绿。
+4. 所有验证通过：smoke ✅ / unit 77 ✅ / ipc ✅ / codes ✅ / window ✅ / journeys E2E ✅ / 云端 CI 4 环境 100% 全绿（Release 打包工作流已按决策移除，纯代码分发）。
 
 ## 〇、知识库轮（最新，2026-08-30）
 
@@ -75,8 +75,8 @@ E2E（用户视角 16 段旅程）：跑法与**重跑前必做的清理**见 [`
 ## 六、建议的下一步（供维护者决策，本轮未做）
 
 1. ~~`agent-service.ts` 1252 行拆分~~ → **已由协作者何惜在模块化拆分轮完成**（全部 ≤300 行）；剩余 Roadmap 项：插件受控执行 API（真沙箱）、插件签名与信任分级——需维护者拍板安全架构选型；
-2. **自动更新的发布侧动作**（何惜轮已备好功能代码，默认关闭）：确认发布仓库 → NSIS 安装包 → GitHub Release + token → 实测升级链路，清单见 `docs/REFACTOR_REPORT.md` §五.3；
-3. 知识库向量模式落地：Python 包 vtx-embed-7M 为 `/v1/embeddings` 服务（写好脚本即可切换）；
+2. ~~自动更新的发布侧动作~~ → **维护者定调：纯代码分发，不发安装包**；`release.yml` 自动打包工作流已从仓库彻底移除，杜绝任何 tag 触发打包；
+3. 知识库向量模式落地：Python 包 vtx-embed-7M 为 `/v1/embeddings` 服务（写好脚本即可切换，未建时纯关键词模式已开箱即用）；
 4. `live:check` 真模型联测（需真实 API Key，历轮验证均基于 mock）；
 5. CI 窗口自测稳定性观察（Windows runner 偶发风险，必要时加重试）；
 6. **网络环境备忘**：GitHub API（api.github.com）在本机直连易超时，走本地代理 `https://proxy=http://127.0.0.1:7897`（Clash 混合端口）；git push 主站通道不受影响。
