@@ -1,0 +1,45 @@
+{
+  "name": "kb",
+  "version": "0.1.0",
+  "displayName": "知识库",
+  "description": "本地知识库：代码/文档按语法边界切块，支持本地 embedding 向量检索 + 关键词双路（模型端点插件化可配）",
+  "author": "agent-base",
+  "permissions": ["fs:read"],
+  "entry": "index.js",
+  "protocolVersion": 1,
+  "settings": {
+    "type": "object",
+    "properties": {
+      "kbDir": {
+        "type": "string",
+        "title": "知识库目录",
+        "description": "存放知识文档/代码的文件夹，相对应用目录或绝对路径，默认 知识库",
+        "default": "知识库"
+      },
+      "chunking": {
+        "type": "string",
+        "title": "切块策略",
+        "description": "code=按函数/类等语法逻辑边界（代码友好）；rules=按标题/段落",
+        "default": "code"
+      },
+      "embedEnabled": {
+        "type": "boolean",
+        "title": "启用向量检索",
+        "description": "需要本地 /v1/embeddings 服务（如 VTXAI/vtx-embed-7M）。关闭则仅关键词检索",
+        "default": true
+      },
+      "embedBaseUrl": {
+        "type": "string",
+        "title": "Embedding 服务地址",
+        "description": "OpenAI 兼容端点，如 http://127.0.0.1:8000/v1",
+        "default": "http://127.0.0.1:8000/v1"
+      },
+      "embedModel": {
+        "type": "string",
+        "title": "Embedding 模型",
+        "description": "如 VTXAI/vtx-embed-7M",
+        "default": "VTXAI/vtx-embed-7M"
+      }
+    }
+  }
+}

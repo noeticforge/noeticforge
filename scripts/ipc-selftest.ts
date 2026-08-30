@@ -68,7 +68,8 @@ async function main(): Promise<void> {
   ]);
   const service = new AgentService({ appDir, pushEvent: push, initialProvider: mock });
   await service.init();
-  check(events.some((e) => e.channel === 'plugins-changed' && e.payload.plugins.length === 5), 'init 推送 plugins-changed（4 内置 + core-subagent）');
+  const BUILTIN_TOTAL = 6; // read-file/write-file/shell-exec/web-fetch/kb + core-subagent
+  check(events.some((e) => e.channel === 'plugins-changed' && e.payload.plugins.length === BUILTIN_TOTAL), `init 推送 plugins-changed（${BUILTIN_TOTAL - 1} 内置 + core-subagent）`);
 
   // 非法消息
   const bad = service.sendMessage({ message: { role: 'assistant', content: 'x' } as any });
@@ -149,7 +150,7 @@ async function main(): Promise<void> {
 
   // ---------- 4. 插件热装卸 ----------
   const list = service.listPlugins();
-  check(list.ok === true && list.ok && list.data.plugins.length === 5, 'list-plugins 返回 5 个插件（含 core-subagent）');
+  check(list.ok === true && list.ok && list.data.plugins.length === BUILTIN_TOTAL, `list-plugins 返回 ${BUILTIN_TOTAL} 个插件（含 core-subagent 与 kb）`);
 
   // 造一个临时插件（echo 工具，无权限要求）
   const tmpPluginDir = path.join(appDir, 'incoming-echo');

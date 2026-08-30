@@ -31,7 +31,7 @@ src/
     └── preload.ts            contextBridge 暴露 window.agentBase（UI 唯一入口）
 
 renderer/                     桌面 UI（会话侧栏/流式聊天/Markdown/审批弹窗/插件与 MCP 管理/模型配置）
-plugins/builtin/              内置插件：read-file / write-file / shell-exec（命令执行，强制审批）/ web-fetch（网页抓取）
+plugins/builtin/              内置插件：read-file / write-file / shell-exec（命令执行，强制审批）/ web-fetch（网页抓取）/ kb（本地知识库检索）
 plugins/user/                 用户插件安装位置        plugins/settings/ 插件设置值
 sdk/                          @agent-base/sdk：插件作者的类型与 definePlugin
 templates/plugin-basic/       插件模板（5 分钟出第一个插件）
@@ -92,11 +92,26 @@ npm run dist
 }
 ```
 
+## 本地知识库（kb 插件）
+
+开箱即用的本地知识库检索——把文档/代码放进 `知识库/` 文件夹，模型通过 `kb.search` 工具检索：
+
+- **切块**：代码文件（.ts/.js/.py…）按**函数/类等语法逻辑边界**切块，文档按标题/段落；纯 JS 实现，零原生依赖
+- **检索**：关键词（中文子串）+ **本地向量**双路混合排序（RRF 融合），比单关键词抗噪
+- **向量模型**：任意 OpenAI 兼容 `/v1/embeddings` 服务，默认预设 **VTXAI/vtx-embed-7M**（超轻量代码 embedding，HF 可下）；服务不在线时**自动降级纯关键词**，检索永不断供
+- **可配置**：知识库目录 / 切块策略 / 向量开关 / 服务地址 / 模型名全部在「设置 → 插件 → 知识库」
+- 索引存 `知识库/.kb-index.json`（自动构建，文件变动自动失效重建；`kb.reindex` 强制重建）
+
+```text
+知识库/
+├── 项目简介.md      ← 随仓库附 3 篇示例，可替换为你自己的资料
+├── 部署流程.md
+└── 常见问题.md
+```
+
 ## 接 MCP 工具生态
 
-项目根目录 `mcp.json`（与 Claude Desktop 格式兼容）：
-
-```jsonc
+项目根目录 `mcp.json`（与 Claude Desktop 格式兼容）：```jsonc
 {
   "mcpServers": {
     "fs":   { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "D:/docs"] },
