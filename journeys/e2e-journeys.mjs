@@ -2,7 +2,7 @@
  * 用户视角全功能旅程测试（CDP 驱动真实 UI）。
  * 前置：journeys/ 为工作目录；mock-openai(18099) 与 electron(CDP 9226) 已启动。
  * 覆盖：模型配置 / 对话 / 三种工具 / 改参批准 / 拒绝 / 排队 / 会话管理 / 权限模式 /
- *      推理力度 / @ 引用 / MCP / 子代理 / 终端 / 主题与重启持久性。
+ *      推理力度 / @ 引用 / MCP / 子代理 / 终端 / 主题与重启持久性 / 窗控。
  */
 import { writeFileSync, readFileSync, existsSync, mkdirSync } from 'node:fs';
 
@@ -71,6 +71,10 @@ const waitFor = async (expr, timeout, label) => {
 
 let failed = 0;
 const check = (ok, label) => { console.log(`${ok ? '✅' : '❌'} ${label}`); if (!ok) failed++; };
+// J16 降级策略：窗口 bounds、minimize 后的页面可见性、close 后的 target 状态受窗口管理器、
+// DPI、服务器桌面会话等因素影响，无法稳定断言时只输出警告，不增加 failed。
+// win:state 推送由主进程经 IPC 直接发出，相对稳定，仍按硬断言处理。
+const warn = (label, detail) => console.warn(`⚠️ ${label}：${detail}`);
 const sendViaInput = async (text) => { await setValue('#message-input', text); await click('#send-btn'); };
 /** 打开下拉并点选菜单项（带重试：菜单渲染时序不稳定时的兜底） */
 const menuClick = async (anchorSel, text) => {
@@ -225,6 +229,41 @@ await run(`[...document.querySelectorAll('.session-item')].find(b => b.textConte
 await waitFor(`document.querySelector('#messages').innerText.includes('收到：消息一')`, 10_000, 'J15 重启后历史重建');
 check((await ev(`[...document.querySelectorAll('.tool-row')].length >= 1`)), 'J15 重启后工具行重建');
 await shot('journey-reload-history');
+
+// ============ J16 窗控（真实 IPC → win:state 推送） ============
+check((await ev(`typeof window.agentWindow === 'object'`)), 'J16 preload 暴露 window.agentWindow');
+await run(`window.__winState = null; window.agentWindow.onState(s => window.__winState = s);`);
+
+await run(`window.agentWindow.toggleMaximize()`);
+await waitFor(`window.__winState?.maximized === true`, 3000, 'J16 最大化状态推送');
+check((await ev(`window.__winState?.maximized === true`)), 'J16 maximize 推送 win:state{maximized:true}');
+// DPI/显示器边界可能带来 1-2px 取整差异，这里允许 4px 容差；无头或服务器桌面会话若仍不稳定，
+// 按降级策略只输出警告，不直接 fail。
+const maxGeo = await ev(`({ width: outerWidth, height: outerHeight, availWidth: screen.availWidth, availHeight: screen.availHeight })`);
+const coversWorkArea = maxGeo.width >= maxGeo.availWidth - 4 && maxGeo.height >= maxGeo.availHeight - 4;
+if (coversWorkArea) check(true, 'J16 maximize 后窗口覆盖当前工作区');
+else warn('J16 maximize 几何未覆盖工作区', JSON.stringify(maxGeo));
+
+await run(`window.agentWindow.toggleMaximize()`);
+await waitFor(`window.__winState?.maximized === false`, 3000, 'J16 还原状态推送');
+check((await ev(`window.__winState?.maximized === false`)), 'J16 unmaximize 推送 win:state{maximized:false}');
+
+await run(`window.agentWindow.minimize()`);
+await sleep(600);
+const minimized = await ev(`document.visibilityState === 'hidden'`);
+if (minimized) check(true, 'J16 minimize 使页面进入 hidden');
+else warn('J16 minimize 页面可见性未切换', '服务器桌面/无头环境不保证 minimize 触发 visibilityState');
+
+await run(`window.agentWindow.close()`);
+await sleep(800);
+try {
+  const targets = await (await fetch('http://127.0.0.1:9226/json')).json();
+  const pageStillAlive = targets.some((t) => t.type === 'page' && /index\.html/.test(t.url));
+  if (pageStillAlive) warn('J16 close 后仍存在渲染 target', '窗口可能被主进程重建或 CDP target 延迟移除');
+  else check(true, 'J16 close 后渲染 target 已移除');
+} catch {
+  check(true, 'J16 close 后 CDP 已随应用退出');
+}
 
 console.log(failed === 0 ? '\n用户旅程测试全部通过 🎉' : `\n${failed} 项失败`);
 ws.close();

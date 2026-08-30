@@ -13,6 +13,7 @@ jobs:
         os: [ubuntu-latest, windows-latest]
         node: [22, 24]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -27,4 +28,7 @@ jobs:
       - run: npm run smoke
       - run: npm run test:unit
       - run: npm run test:ipc
+      - name: Window selftest
+        if: runner.os == 'Windows'
+        run: npm run test:window
       - run: npm run check:codes
