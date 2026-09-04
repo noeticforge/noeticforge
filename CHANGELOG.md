@@ -11,13 +11,13 @@
 
 ### 新增
 - **kb 知识库插件**（`plugins/builtin/kb`，完全插件化，零底座改动）：
-  - `kb.search`：本地知识库检索（query 留空 = 列清单与统计）；`kb.reindex` 强制重建索引
+  - `kb.search`：本地知识库检索（query 留空 = 列清单与统计）；`kb.reindex` 强制重建索引；`kb.archive` 对话要点与方案一键沉淀归档至知识库并实时联动刷新索引
   - **代码感知切块**：.ts/.js/.py 按函数/类/装饰器等语法逻辑边界切，文档按标题/段落切；纯 JS，零原生依赖
   - **双路检索**：关键词（中文子串友好）+ 向量（OpenAI 兼容 `/v1/embeddings`）RRF 融合；embedding 服务不可用自动降级纯关键词，检索不断供
   - 设置项（富插件协议 v2）：`kbDir` / `chunking` / `embedEnabled` / `embedBaseUrl` / `embedModel`，默认预设 `VTXAI/vtx-embed-7M`（HF 超轻量代码 embedding）
   - 索引 `知识库/.kb-index.json` 自动构建与失效（mtime 对比），仓库附 `知识库/` 示例目录（3 篇文档）
 - **本地 embedding 服务脚本**（`scripts/serve-vtx-embed.py`，`npm run serve:vtx`）：OpenAI 兼容的 `/v1/embeddings` 端点，自动拉取并加载 `VTXAI/vtx-embed-7M`，纯标准库 HTTP 服务零额外 Web 框架依赖
-- 测试：`tests/kb.test.ts` 17 项（切块边界/余弦/关键词/RRF/索引新鲜度/降级/加载器校验）
+- 测试：`tests/kb.test.ts` 20 项（切块边界/余弦/关键词/RRF/索引新鲜度/归档沉淀联动/降级/加载器校验）
 
 ### 模块化拆分轮（何惜，PR #1）
 

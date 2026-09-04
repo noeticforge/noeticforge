@@ -6,6 +6,7 @@ import { describe, expect, it, afterEach, beforeEach } from 'vitest';
 import {
   chunkCode, chunkRules, cosine, keywordScore, fuseResults,
   listFiles, buildIndex, loadIndex, isFresh, searchIndex, TEXT_EXTS,
+  sanitizeFilename, formatArchiveDoc,
 } from '../plugins/builtin/kb/index.js';
 import { loadPluginFromDir } from '../src/plugins/loader.js';
 import type { Plugin } from '../src/types.js';
@@ -43,8 +44,8 @@ describe('插件本体能被加载器验证', () => {
   it('manifest 通过校验 + 工具命名/权限合法', async () => {
     const plugin: Plugin = await loadPluginFromDir(path.join(process.cwd(), 'plugins', 'builtin', 'kb'));
     expect(plugin.manifest.name).toBe('kb');
-    expect(plugin.tools.map((t) => t.name)).toEqual(['kb.search', 'kb.reindex']);
-    expect(plugin.manifest.permissions).toEqual(['fs:read']);
+    expect(plugin.tools.map((t) => t.name)).toEqual(['kb.search', 'kb.reindex', 'kb.archive']);
+    expect(plugin.manifest.permissions).toEqual(['fs:read', 'fs:write']);
     expect(plugin.manifest.settings).toBeTruthy();
   });
 });
@@ -209,5 +210,81 @@ describe('索引可被读回并带出完整信息', () => {
     expect(await loadIndex(dir)).toBeNull();
     await write('.kb-index.json', 'not json');
     expect(await loadIndex(dir)).toBeNull();
+  });
+});
+
+describe('知识库归档工具与辅助函数 (kb.archive)', () => {
+  it('sanitizeFilename: 清除危险字符与空值兜底', () => {
+    expect(sanitizeFilename('修复\\Bug/问题:排障<1>?*|')).toBe('修复_Bug_问题_排障_1');
+    expect(sanitizeFilename('')).toMatch(/^归档_\d+$/);
+    expect(sanitizeFilename('  ')).toMatch(/^归档_\d+$/);
+  });
+
+  it('formatArchiveDoc: 正确生成 Frontmatter 与 Markdown 正文', () => {
+    const doc = formatArchiveDoc({
+      title: '测试归档标题',
+      content: '这里是详细排障内容与代码\n```ts\nconsole.log(1);\n```',
+      category: '排障纪要',
+      tags: ['bug', 'electron'],
+      dateStr: '2026-08-30T12:00:00.000Z',
+    });
+    expect(doc).toContain('title: "测试归档标题"');
+    expect(doc).toContain('category: "排障纪要"');
+    expect(doc).toContain('tags: ["bug", "electron"]');
+    expect(doc).toContain('createdAt: "2026-08-30T12:00:00.000Z"');
+    expect(doc).toContain('# 测试归档标题');
+    expect(doc).toContain('console.log(1);');
+  });
+
+  it('kb.archive 端到端执行：校验、写入分类子目录、防冲突，并使 kb.search 立即可查', async () => {
+    const plugin: Plugin = await loadPluginFromDir(path.join(process.cwd(), 'plugins', 'builtin', 'kb'));
+    const archiveTool = plugin.tools.find((t) => t.name === 'kb.archive')!;
+    const searchTool = plugin.tools.find((t) => t.name === 'kb.search')!;
+    expect(archiveTool).toBeTruthy();
+
+    const ctx = {
+      settings: { kbDir: dir, chunking: 'rules', embedModel: 'none' },
+      workingDir: dir,
+    };
+
+    // 1. 参数不完整时拦截
+    const emptyTitleRes = await archiveTool.execute({ title: '', content: 'some text' }, ctx as any);
+    expect(emptyTitleRes.ok).toBe(false);
+    expect(emptyTitleRes.error).toBe('invalid-arguments');
+
+    const emptyContentRes = await archiveTool.execute({ title: 'foo', content: '   ' }, ctx as any);
+    expect(emptyContentRes.ok).toBe(false);
+
+    // 2. 正常沉淀归档
+    const res = await archiveTool.execute({
+      title: 'Electron透明窗口最大化修复纪要',
+      content: 'Windows平台下透明无边框窗口原生maximize失效，改用workArea手工铺满工作区。',
+      category: 'Windows踩坑',
+      tags: ['electron', 'windows', 'bugfix'],
+    }, ctx as any);
+
+    expect(res.ok).toBe(true);
+    expect(res.output).toContain('成功沉淀知识至知识库');
+    expect(res.output).toContain('Electron透明窗口最大化修复纪要');
+
+    // 验证文件落盘与内容
+    const targetFile = path.join(dir, 'Windows踩坑', 'Electron透明窗口最大化修复纪要.md');
+    const contentOnDisk = await readFile(targetFile, 'utf-8');
+    expect(contentOnDisk).toContain('workArea手工铺满工作区');
+
+    // 3. 再次归档同名条目：验证防同名覆盖（自动追加时间戳）
+    const res2 = await archiveTool.execute({
+      title: 'Electron透明窗口最大化修复纪要',
+      content: '第二份不同补充内容',
+      category: 'Windows踩坑',
+    }, ctx as any);
+    expect(res2.ok).toBe(true);
+    expect(res2.data.path).toMatch(/Electron透明窗口最大化修复纪要_\d+\.md$/);
+
+    // 4. 立即验证 kb.search 能无缝检索出刚沉淀的内容
+    const searchRes = await searchTool.execute({ query: 'workArea' }, ctx as any);
+    expect(searchRes.ok).toBe(true);
+    expect(searchRes.output).toContain('Electron透明窗口最大化修复纪要');
+    expect(searchRes.output).toContain('workArea手工铺满工作区');
   });
 });

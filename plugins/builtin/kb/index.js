@@ -1,4 +1,4 @@
-import { readdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
@@ -320,6 +320,34 @@ function resolveRoot(ctx) {
   return path.isAbsolute(cfg.kbDir) ? cfg.kbDir : path.resolve(ctx?.workingDir ?? process.cwd(), cfg.kbDir);
 }
 
+function sanitizeFilename(input) {
+  const clean = String(input ?? '')
+    .replace(/[\\/:*?"<>|\r\n\t]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .trim();
+  return clean || `归档_${Date.now()}`;
+}
+
+function formatArchiveDoc({ title, content, category, tags, dateStr }) {
+  const lines = ['---'];
+  lines.push(`title: ${JSON.stringify(title)}`);
+  if (category) lines.push(`category: ${JSON.stringify(category)}`);
+  if (Array.isArray(tags) && tags.length > 0) {
+    const validTags = tags.map((t) => JSON.stringify(String(t).trim())).filter(Boolean);
+    if (validTags.length > 0) {
+      lines.push(`tags: [${validTags.join(', ')}]`);
+    }
+  }
+  lines.push(`createdAt: ${JSON.stringify(dateStr)}`);
+  lines.push('---');
+  lines.push('');
+  lines.push(`# ${title}`);
+  lines.push('');
+  lines.push(content.trim());
+  lines.push('');
+  return lines.join('\n');
+}
+
 function makeEmbed(cfg) {
   if (!cfg.embedEnabled) return null;
   const base = cfg.embedBaseUrl.replace(/\/$/, '');
@@ -418,7 +446,101 @@ export const plugin = {
         return { ok: true, output: `知识库重建完成：${index.chunks.length} 块｜${fold}｜目录 ${root}` };
       },
     },
+    {
+      name: 'kb.archive',
+      description:
+        '将对话要点、排障结论、架构设计或经验方案归档沉淀为知识库 Markdown 文档。' +
+        '自动写入知识库目录下的指定分类子目录（默认为「会话归档」），并立即刷新索引。' +
+        '归档后的内容可立刻通过 kb.search 被模型或用户检索。',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: '知识条目标题（简明，如“Windows窗口最大化失效根因与修复”）' },
+          content: { type: 'string', description: '正文内容（Markdown 格式，含背景、核心结论、代码示例与操作指引）' },
+          category: { type: 'string', description: '分类子目录（默认“会话归档”，支持“架构设计”、“排障纪要”、“业务备忘”等）' },
+          tags: {
+            type: 'array',
+            items: { type: 'string' },
+            description: '可选标签列表（如 ["electron", "windows", "bugfix"]）',
+          },
+          filename: {
+            type: 'string',
+            description: '可选指定文件名（不含 .md 后缀，不填则基于标题自动生成安全文件名）',
+          },
+        },
+        required: ['title', 'content'],
+        additionalProperties: false,
+      },
+      permissions: ['fs:write', 'fs:read'],
+      requiresApproval: false,
+      async execute(args, ctx) {
+        const title = String(args.title ?? '').trim();
+        const content = String(args.content ?? '').trim();
+        if (!title) return { ok: false, output: '参数 title 不能为空', error: 'invalid-arguments' };
+        if (!content) return { ok: false, output: '参数 content 不能为空', error: 'invalid-arguments' };
+
+        const root = resolveRoot(ctx);
+        if (!existsSync(root)) {
+          await mkdir(root, { recursive: true });
+        }
+
+        const category = String(args.category ?? '').trim() || '会话归档';
+        const safeCat = sanitizeFilename(category);
+        const targetDir = path.join(root, safeCat);
+        if (!existsSync(targetDir)) {
+          await mkdir(targetDir, { recursive: true });
+        }
+
+        const baseName = sanitizeFilename(args.filename ? String(args.filename).replace(/\.md$/i, '') : title);
+        let finalFilename = `${baseName}.md`;
+        let targetPath = path.join(targetDir, finalFilename);
+
+        if (existsSync(targetPath)) {
+          finalFilename = `${baseName}_${Date.now()}.md`;
+          targetPath = path.join(targetDir, finalFilename);
+        }
+
+        const nowIso = new Date().toISOString();
+        const docText = formatArchiveDoc({
+          title,
+          content,
+          category,
+          tags: Array.isArray(args.tags) ? args.tags : [],
+          dateStr: nowIso,
+        });
+
+        await writeFile(targetPath, docText, 'utf-8');
+
+        // 立即刷新索引，确保沉淀的内容立即可查
+        const { index } = await ensureFreshIndex(ctx, true);
+        const chunkCount = index?.chunks?.length ?? 0;
+        const relPath = path.relative(root, targetPath).replace(/\\/g, '/');
+
+        const lines = [
+          `✅ 成功沉淀知识至知识库：`,
+          `- 文件路径: ${relPath}（完整路径: ${targetPath}）`,
+          `- 标题: ${title}`,
+          `- 分类: ${category}`,
+          `- 标签: ${Array.isArray(args.tags) && args.tags.length ? args.tags.join(', ') : '无'}`,
+          `- 知识库当前共 ${chunkCount} 个索引块，新知识已立即可查（可通过 kb.search 检索）。`,
+        ];
+
+        return {
+          ok: true,
+          output: lines.join('\n'),
+          data: {
+            path: relPath,
+            fullPath: targetPath,
+            title,
+            category,
+            chunks: chunkCount,
+          },
+          render: 'markdown',
+        };
+      },
+    },
   ],
 };
 
+export { sanitizeFilename, formatArchiveDoc };
 export default plugin;

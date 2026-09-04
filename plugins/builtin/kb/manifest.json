@@ -4,7 +4,7 @@
   "displayName": "知识库",
   "description": "本地知识库：代码/文档按语法边界切块，支持本地 embedding 向量检索 + 关键词双路（模型端点插件化可配）",
   "author": "agent-base",
-  "permissions": ["fs:read"],
+  "permissions": ["fs:read", "fs:write"],
   "entry": "index.js",
   "protocolVersion": 1,
   "settings": {

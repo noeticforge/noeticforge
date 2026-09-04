@@ -590,7 +590,7 @@ return { ok: true, output: `**${greeting}，${args.name}！**`, render: 'markdow
 
 设置值由用户在 UI（`get/set-plugin-settings` 通道）配置，落盘于 `plugins/settings/<name>.json`，属**用户数据**——插件不得直接读写该文件，只能经 `ctx.settings` 获取。
 
-> 实战范例：内置插件 `kb`（知识库）用 settings 暴露了 5 个配置项（kbDir/chunking/embedEnabled/embedBaseUrl/embedModel），见 `plugins/builtin/kb/manifest.json`——设置页自动渲染表单，值注入 `ctx.settings`，插件零 UI 代码。
+> 实战范例：内置插件 `kb`（知识库）提供了 `kb.search`、`kb.reindex` 与 `kb.archive`（对话沉淀归档）三个工具，并用 settings 暴露了 5 个配置项（kbDir/chunking/embedEnabled/embedBaseUrl/embedModel），见 `plugins/builtin/kb/manifest.json`——设置页自动渲染表单，值注入 `ctx.settings`，插件零 UI 代码。
 
 ### 7.5 插件注册表
 

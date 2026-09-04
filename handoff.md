@@ -15,7 +15,7 @@
    - **维护轮**（Ljj041120）：全量代码审查 + 修复 8 项真 bug + vitest 单测层，报告在 `docs/CODE_REVIEW.md`；
    - **模块化拆分轮**（协作者 何惜，PR #1）：agent-service/app.js 拆分为 ≤300 行模块 + electron-updater 自动更新（默认关）+ CI 窗口自测 + J16 窗控旅程，报告在 `docs/REFACTOR_REPORT.md`；
    - **知识库轮**（Ljj041120）：本地知识库 kb 插件（代码感知切块 + 关键词/向量双路检索），见下节。
-4. 所有验证通过：smoke ✅ / unit 77 ✅ / ipc ✅ / codes ✅ / window ✅ / journeys E2E ✅ / 云端 CI 4 环境 100% 全绿（Release 打包工作流已按决策移除，纯代码分发）。
+4. 所有验证通过：smoke ✅ / unit 80 ✅ / ipc ✅ / codes ✅ / window ✅ / journeys E2E ✅ / 云端 CI 4 环境 100% 全绿（Release 打包工作流已按决策移除，纯代码分发）。
 
 ## 〇、知识库轮（最新，2026-08-30）
 
@@ -25,6 +25,7 @@
 - 代码感知切块：.ts/.js/.py 按**函数/类/装饰器语法边界**（纯 JS 零原生依赖），文档按标题/段落；
 - 双路检索：关键词 + 向量（OpenAI 兼容 `/v1/embeddings`，默认预设 **VTXAI/vtx-embed-7M**，HF 超轻量代码 embedding）RRF 融合；**embedding 不在线自动降级纯关键词**；
 - 设置项（插件设置页）：kbDir / chunking / embedEnabled / embedBaseUrl / embedModel；
+- 工具清单：`kb.search`（检索）、`kb.reindex`（强制重建）、`kb.archive`（对话要点与方案一键沉淀归档至 `知识库/会话归档/`，自动刷新索引立即可查）；
 - 用法：文档丢进 `知识库/`（仓库附 3 篇示例），对话里问即可；索引 `.kb-index.json` 自动失效重建。
 - 向量模式：`npm run serve:vtx`（一键拉取并在本地启动 `VTXAI/vtx-embed-7M` 4.7MB 服务，端口 8000）；未启动时纯关键词模式自动降级兜底。
 4. 所有 markdown 文档已同步更新（README / CHANGELOG / CONTRIBUTING / docs/* / journeys/README）。
@@ -56,7 +57,7 @@ npm run electron     # 桌面应用
 
 ```bash
 npm run smoke        # 循环链路冒烟（离线）
-npm run test:unit    # vitest 单元测试 77 项（离线）
+npm run test:unit    # vitest 单元测试 80 项（离线）
 npm run test:ipc     # IPC 协议自测（离线，通道数见输出）
 npm run check:codes  # 错误码三方一致（离线）
 npm run test:window  # 窗口控制（需要桌面环境；CI 无头不跑）

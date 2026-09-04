@@ -19,7 +19,7 @@ npm run serve:vtx                    # 启动 http://127.0.0.1:8000/v1/embedding
 | 命令 | 测什么 | 需要 |
 |---|---|---|
 | `npm run smoke` | 循环引擎 + providers 多模态转换 + 严格网关兼容 + 终端后端 | 无（离线） |
-| `npm run test:unit` | vitest 单元测试 77 项（上下文裁剪/Schema/注册表/会话存储/Provider 流解析/知识库 kb） | 无（离线） |
+| `npm run test:unit` | vitest 单元测试 80 项（上下文裁剪/Schema/注册表/会话存储/Provider 流解析/知识库 kb） | 无（离线） |
 | `npm run test:ipc` | IPC 协议 89 项（含权限模式/排队/压缩/子代理/MCP/通道接线完整性） | 无（离线） |
 | `npm run test:window` | 窗口控制（最小化/最大化/关闭/状态推送） | 桌面环境（**CI 不跑此防线**，必须本地验证） |
 | `npm run check:codes` | 错误码三方一致（事实源=协议文档=UI 文案） | 无（离线） |
