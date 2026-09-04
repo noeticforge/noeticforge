@@ -68,7 +68,7 @@ E2E（用户视角 16 段旅程）：跑法与**重跑前必做的清理**见 [`
 
 ## 五、本仓库的现状与注意事项
 
-- **git**：`main` 分支，远端 **https://github.com/noeticforge/noeticforge**（私有）。工作区有一处**刻意保留的未提交删除**：`iOS27透明液态玻璃/` 设计技能文件（zip 里就是删除状态，历史中可找回）——不影响构建与测试，处置由维护者定夺。
+- **git**：`main` 分支，远端 **https://github.com/noeticforge/noeticforge**（私有）。工作区零残留、零脏改动，`git status` 完全 clean（历史解压遗留的已集成设计素材草稿已完成归档清理）。
 - **git 身份**：本仓库配置 `user.name=Ljj041120 / user.email=Ljj041120@users.noreply.github.com`（新提交自动归属维护者）。
 - **测试基建的已知盲区**：`test:window` 不在 CI（无头环境）；journeys E2E 不含窗控旅程。这两层目前只能本地兜底。
 - **架构铁律没变**：契约先行（先改 docs 协议再动码）、`core/loop.ts` 三无关、错误码单一事实源、IPC 三件套、工具路径用 `ctx.workingDir`。全文见 `README.md`「核心设计约束」与 `CONTRIBUTING.md`。
