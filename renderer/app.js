@@ -10,9 +10,9 @@ import { $, el, st } from './modules/state.js';
 import { toast, invoke, closeMenu, autoGrow } from './modules/utils.js';
 import { openPolicyMenu, openModelMenu, openEffortMenu, openPlusMenu, refreshAppInfo, setMenuHandlers } from './modules/menus.js';
 import { logEvent, loadAudit, toggleRightPanel, startTerminal, onTermData } from './modules/right-panel.js';
-import { openSettings, renderProviderDetail, modelChip, saveProvider, renderMcpPage, saveMcpJson, renderPluginsPage, handleInstall, applyTheme } from './modules/settings.js';
+import { openSettings, renderProviderDetail, modelChip, saveProvider, renderMcpPage, saveMcpJson, renderPluginsPage, handleInstall, applyTheme, handleFetchModels } from './modules/settings.js';
 import { setSessionChatHandlers, filteredSessions, renderSessions, loadSessions, doSwitchSession, newSession, onSessionsChanged } from './modules/session.js';
-import { onApproval, onApprove, onReject } from './modules/approval.js';
+import { onApproval, onApprove, onReject, onChoiceConfirm, onChoiceCancel } from './modules/approval.js';
 import { ensureMsgCol, onChunk, onToolStart, onToolResult, onLoopDone, onLoopErr, renderHistory, resetChatView } from './modules/chat.js';
 import { handleSend, maybeOpenAtPicker, pickAttachments } from './modules/composer.js';
 
@@ -117,12 +117,28 @@ function init() {
     }
   });
 
-  // 审批
+  // 审批与交互决策
   el.apvOk.addEventListener('click', onApprove);
   el.apvNo.addEventListener('click', onReject);
+  $('#pd-fetch-models')?.addEventListener('click', handleFetchModels);
+  $('#choice-confirm-btn')?.addEventListener('click', onChoiceConfirm);
+  $('#choice-cancel-btn')?.addEventListener('click', onChoiceCancel);
+  $('#choice-custom-input')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') onChoiceConfirm();
+  });
 
   // 快捷键
   document.addEventListener('keydown', (e) => {
+    const choiceModal = $('#choice-modal');
+    if (choiceModal && !choiceModal.classList.contains('hidden')) {
+      if (e.key === 'Escape') { e.preventDefault(); onChoiceCancel(); return; }
+      if (e.key === 'Enter' && e.target.id !== 'choice-custom-input') { e.preventDefault(); onChoiceConfirm(); return; }
+      if (e.target.tagName !== 'INPUT') {
+        const k = e.key.toUpperCase();
+        const card = $(`#choice-options .choice-card[data-id="${k}"]`);
+        if (card) { card.click(); return; }
+      }
+    }
     if (e.ctrlKey && e.key.toLowerCase() === 'n') { e.preventDefault(); newSession(); }
     if (e.ctrlKey && e.key.toLowerCase() === 'k') { e.preventDefault(); el.searchInput.focus(); el.searchInput.select(); }
     if (e.key === 'Escape' && st.activeMenu) closeMenu();

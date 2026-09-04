@@ -68,7 +68,7 @@ async function main(): Promise<void> {
   ]);
   const service = new AgentService({ appDir, pushEvent: push, initialProvider: mock });
   await service.init();
-  const BUILTIN_TOTAL = 6; // read-file/write-file/shell-exec/web-fetch/kb + core-subagent
+  const BUILTIN_TOTAL = 7; // read-file/write-file/shell-exec/web-fetch/kb/ask-user + core-subagent
   check(events.some((e) => e.channel === 'plugins-changed' && e.payload.plugins.length === BUILTIN_TOTAL), `init 推送 plugins-changed（${BUILTIN_TOTAL - 1} 内置 + core-subagent）`);
 
   // 非法消息
@@ -527,7 +527,7 @@ async function main(): Promise<void> {
   const preloadDist = readFileSync(path.join(projectRoot, 'dist/src/electron/preload.js'), 'utf-8');
   const mainDist = readFileSync(path.join(projectRoot, 'dist/src/electron/main.js'), 'utf-8');
   const declared = [
-    ...preloadDist.matchAll(/'(send-message|approve-tool|reject-tool|stop|list-plugins|install-plugin|install-plugin-from-registry|uninstall-plugin|get-plugin-settings|set-plugin-settings|list-sessions|create-session|switch-session|rename-session|delete-session|list-providers|set-model-config|list-mcp-servers|set-mcp-config|toggle-mcp-server|set-agent-policy|get-app-info|read-audit|preview-file|list-workspace-files|read-attachment|pick-files|term-input|term-stop|check-updates|download-update|install-update|get-updater-state)'/g),
+    ...preloadDist.matchAll(/'(send-message|approve-tool|reject-tool|stop|list-plugins|install-plugin|install-plugin-from-registry|uninstall-plugin|get-plugin-settings|set-plugin-settings|list-sessions|create-session|switch-session|rename-session|delete-session|list-providers|set-model-config|fetch-models|list-mcp-servers|set-mcp-config|toggle-mcp-server|set-agent-policy|get-app-info|read-audit|preview-file|list-workspace-files|read-attachment|pick-files|term-input|term-stop|check-updates|download-update|install-update|get-updater-state)'/g),
   ].map((m) => m[1]);
   const missing = declared.filter((ch) => !mainDist.includes(`handle('${ch}'`) && !mainDist.includes(`on('${ch}'`));
   check(missing.length === 0, `通道接线完整性：preload 的 ${declared.length} 个通道全部在 main 注册（缺失: ${missing.join(', ') || '无'}）`);

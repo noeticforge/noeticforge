@@ -58,9 +58,9 @@ export function openModelMenu() {
   if (info.models.length) {
     for (const m of info.models) {
       items.push({
-        ico: '◈', label: m, active: m === info.models[0],
+        ico: '◈', label: m, active: m === (info.model || info.models[0]),
         onClick: async () => {
-          const r = await invoke(window.agentBase.setModelConfig({ config: { provider: info.provider, model: m } }), '切换模型');
+          const r = await invoke(window.agentBase.setModelConfig({ config: { provider: info.provider, model: m, baseUrl: info.baseUrl } }), '切换模型');
           if (r.ok) { toast('已切换模型：' + m, 'ok'); await refreshAppInfo(); }
         },
       });
@@ -81,7 +81,7 @@ export function openEffortMenu() {
       active: cur === key,
       onClick: async () => {
         const r = await invoke(window.agentBase.setAgentPolicy({ reasoningEffort: key }), '调整推理力度');
-        if (r.ok) { toast('推理力度：' + EFFORT_LABEL[key] + (st.appInfo?.provider === 'anthropic' ? '' : '（OpenAI 兼容端点需 config.json 开启 enableReasoningEffort）'), 'ok'); await refreshAppInfo(); }
+        if (r.ok) { toast('已切换推理力度：' + EFFORT_LABEL[key], 'ok'); await refreshAppInfo(); }
       },
     });
   }

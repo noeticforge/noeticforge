@@ -1,0 +1,10 @@
+{
+  "name": "ask-user",
+  "version": "0.1.0",
+  "displayName": "AI 决策交互选择",
+  "description": "当面临多种方案取舍、关键技术决策或不确定需求时，向用户弹出液态玻璃风格的 ABCD 交互选择卡片",
+  "author": "agent-base",
+  "permissions": [],
+  "entry": "index.js",
+  "protocolVersion": 1
+}

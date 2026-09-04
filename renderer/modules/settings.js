@@ -97,6 +97,36 @@ export async function saveProvider() {
   }
 }
 
+export async function handleFetchModels() {
+  const provider = $('#pd-models').dataset.provider;
+  if (!provider) return;
+  const apiKey = $('#pd-apikey').value.trim();
+  const baseUrl = $('#pd-baseurl').value.trim();
+  const btn = $('#pd-fetch-models');
+  btn.disabled = true;
+  const origText = btn.textContent;
+  btn.textContent = '⏳ 查询中...';
+  try {
+    const r = await invoke(window.agentBase.fetchModels({ provider, apiKey, baseUrl }), '拉取远程模型');
+    if (r.ok && Array.isArray(r.data?.models) && r.data.models.length) {
+      const container = $('#pd-models');
+      const existing = new Set([...container.querySelectorAll('.mc-name')].map((n) => n.textContent.trim()));
+      let added = 0;
+      for (const m of r.data.models) {
+        if (!existing.has(m)) {
+          container.appendChild(modelChip(m, container));
+          existing.add(m);
+          added++;
+        }
+      }
+      toast(`成功拉取 ${r.data.models.length} 个模型（新增 ${added} 个）`, 'ok');
+    }
+  } finally {
+    btn.disabled = false;
+    btn.textContent = origText;
+  }
+}
+
 export async function renderMcpPage() {
   const r = await invoke(window.agentBase.listMcpServers(), '加载 MCP');
   if (!r.ok) return;

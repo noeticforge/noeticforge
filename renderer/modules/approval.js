@@ -18,6 +18,10 @@ export function onApproval(p) {
   el.apvReasonInput.value = '';
   let parsed = args;
   if (typeof parsed === 'string') { try { parsed = JSON.parse(parsed); } catch (_e) { parsed = null; } }
+  if (name === 'ask-user.choose') {
+    renderChoiceModal(p, parsed);
+    return;
+  }
   const keys = parsed && typeof parsed === 'object' ? Object.keys(parsed) : [];
   el.apvTBody.innerHTML = '';
   if (keys.length) {
@@ -158,5 +162,102 @@ export async function onReject() {
   el.apvOk.disabled = true; el.apvNo.disabled = true;
   await invoke(window.agentBase.rejectTool({ messageId: r.messageId, toolCallId: r.toolCallId, reason: reason || undefined }), '拒绝工具');
   el.apvModal.classList.add('hidden');
+  st.pending = null;
+}
+
+let selectedChoiceId = null;
+let selectedChoiceLabel = '';
+
+export function renderChoiceModal(p, args) {
+  const { messageId, toolCallId } = p;
+  st.pending = { messageId, toolCallId };
+  const modal = $('#choice-modal');
+  if (!modal) return;
+  const question = args?.question || '请做出决策';
+  const desc = args?.description || '';
+  const rationale = args?.rationale || '';
+  const options = Array.isArray(args?.options) ? args.options : [];
+
+  $('#choice-title').textContent = question;
+  const descEl = $('#choice-desc');
+  descEl.textContent = desc;
+  descEl.classList.toggle('hidden', !desc);
+
+  const recBox = $('#choice-rationale');
+  if (rationale) {
+    recBox.classList.remove('hidden');
+    $('#choice-rationale-text').textContent = rationale;
+  } else {
+    recBox.classList.add('hidden');
+  }
+
+  const container = $('#choice-options');
+  container.innerHTML = '';
+  selectedChoiceId = null;
+  selectedChoiceLabel = '';
+
+  options.forEach((opt, idx) => {
+    const id = opt.id || String.fromCharCode(65 + idx);
+    const label = opt.label || '';
+    const isRec = Boolean(opt.recommended);
+    if (isRec && !selectedChoiceId) {
+      selectedChoiceId = id;
+      selectedChoiceLabel = label;
+    }
+    const card = h('div', 'choice-card' + (isRec ? ' recommended' : '') + (selectedChoiceId === id ? ' selected' : ''));
+    card.dataset.id = id;
+    card.dataset.label = label;
+    card.append(h('div', 'choice-key-badge', id));
+    const content = h('div', 'choice-card-content');
+    content.appendChild(h('div', 'choice-card-label', label));
+    if (opt.description) content.appendChild(h('div', 'choice-card-desc', opt.description));
+    card.appendChild(content);
+
+    card.addEventListener('click', () => {
+      container.querySelectorAll('.choice-card').forEach((c) => c.classList.remove('selected'));
+      card.classList.add('selected');
+      selectedChoiceId = id;
+      selectedChoiceLabel = label;
+    });
+    card.addEventListener('dblclick', () => onChoiceConfirm());
+    container.appendChild(card);
+  });
+
+  if (!selectedChoiceId && options.length) {
+    selectedChoiceId = options[0].id || 'A';
+    selectedChoiceLabel = options[0].label || '';
+    container.querySelector('.choice-card')?.classList.add('selected');
+  }
+
+  const customInput = $('#choice-custom-input');
+  if (customInput) customInput.value = '';
+  modal.classList.remove('hidden');
+}
+
+export async function onChoiceConfirm() {
+  const r = st.pending;
+  if (!r) return;
+  const modal = $('#choice-modal');
+  const customInput = $('#choice-custom-input');
+  const feedback = customInput ? customInput.value.trim() : '';
+  const req = {
+    messageId: r.messageId,
+    toolCallId: r.toolCallId,
+    arguments: {
+      selectedId: selectedChoiceId || 'A',
+      selectedLabel: selectedChoiceLabel || '',
+      userFeedback: feedback,
+    },
+  };
+  await invoke(window.agentBase.approveTool(req), '确认选择');
+  modal?.classList.add('hidden');
+  st.pending = null;
+}
+
+export async function onChoiceCancel() {
+  const r = st.pending;
+  if (!r) return;
+  await invoke(window.agentBase.rejectTool({ messageId: r.messageId, toolCallId: r.toolCallId, reason: '用户取消了选择' }), '拒绝选择');
+  $('#choice-modal')?.classList.add('hidden');
   st.pending = null;
 }

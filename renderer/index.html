@@ -157,6 +157,7 @@
               <div class="pd-add-row">
                 <input id="pd-model-input" type="text" placeholder="模型名，如 deepseek-chat">
                 <button id="pd-model-add" class="btn-glass">＋ 添加模型</button>
+                <button id="pd-fetch-models" class="btn-glass" type="button" title="向端点查询可用模型列表">⚡ 一键拉取远程模型</button>
               </div>
               <div class="pd-actions">
                 <button id="pd-save" class="btn-glass btn-glass-primary">保存并启用</button>
@@ -227,6 +228,33 @@
       <div class="modal-actions">
         <button id="apv-reject-btn" class="btn-glass btn-reject">拒绝</button>
         <button id="apv-approve-btn" class="btn-glass btn-approve">批准</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI 交互选择模态框 (ABCD 决策卡片) -->
+  <div id="choice-modal" class="modal hidden">
+    <div class="modal-mask"></div>
+    <div class="modal-card glass-strong choice-modal-card">
+      <div class="choice-header">
+        <span class="choice-tag">💡 AI 决策交互</span>
+        <h3 id="choice-title" class="choice-title">需要您的决策</h3>
+        <p id="choice-desc" class="choice-desc"></p>
+      </div>
+      <div id="choice-rationale" class="choice-rationale hidden">
+        <span class="ico-rec">✨</span>
+        <div class="rationale-body">
+          <span class="rationale-tag">推荐理由</span>
+          <span id="choice-rationale-text"></span>
+        </div>
+      </div>
+      <div id="choice-options" class="choice-options-grid"></div>
+      <div class="choice-feedback-wrap">
+        <input id="choice-custom-input" type="text" placeholder="补充或调整意见（可选，支持自由输入）">
+      </div>
+      <div class="modal-actions">
+        <button id="choice-cancel-btn" class="btn-glass btn-reject">跳过 / 拒绝</button>
+        <button id="choice-confirm-btn" class="btn-glass btn-glass-primary">确认选择 (Enter)</button>
       </div>
     </div>
   </div>

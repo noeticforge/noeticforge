@@ -163,6 +163,9 @@ export class AgentService {
   setModelConfig(req: { config: Record<string, unknown> }): Promise<IpcResult<null>> {
     return this.policy.setModelConfig(req);
   }
+  fetchRemoteModels(req?: { provider?: string; apiKey?: string; baseUrl?: string }): Promise<IpcResult<{ models: string[] }>> {
+    return this.policy.fetchRemoteModels(req);
+  }
   listMcpServers(): Promise<IpcResult<{ servers: McpServerStatus[]; config: Record<string, McpServerConfig> }>> {
     return this.mcpService.listMcpServers();
   }

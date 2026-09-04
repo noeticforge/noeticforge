@@ -28,6 +28,7 @@ const INVOKE_CHANNELS = [
   // 模型（v0.2）
   'list-providers',
   'set-model-config',
+  'fetch-models',
   // MCP（v0.3）
   'list-mcp-servers',
   'set-mcp-config',
@@ -122,6 +123,7 @@ const agentBase = {
       maxTokens?: number;
     };
   }) => invoke('set-model-config', req),
+  fetchModels: (req?: { provider?: string; apiKey?: string; baseUrl?: string }) => invoke('fetch-models', req),
 
   // ---- MCP ----
   listMcpServers: () => invoke('list-mcp-servers'),

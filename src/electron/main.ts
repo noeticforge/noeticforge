@@ -113,6 +113,7 @@ app.whenReady().then(async () => {
   // 模型
   handle('list-providers', () => service.listProviders());
   handle('set-model-config', (req) => service.setModelConfig(req));
+  handle('fetch-models', (req) => service.fetchRemoteModels(req));
   // MCP
   handle('list-mcp-servers', () => service.listMcpServers());
   handle('set-mcp-config', (req) => service.setMcpConfig(req));

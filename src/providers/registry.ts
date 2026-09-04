@@ -34,8 +34,8 @@ function openaiCompatible(cfg: ProviderConfig, fallbacks: { baseUrl: string; mod
     baseUrl: cfg.baseUrl ?? fallbacks.baseUrl,
     apiKey: cfg.apiKey!,
     model: cfg.model ?? fallbacks.model,
-    // reasoning_effort 透传默认关闭：严格网关会对未知字段报 400，需在 config.json 显式开启
-    enableReasoningEffort: cfg.enableReasoningEffort === true,
+    // reasoning_effort 透传：显式开启、或 DeepSeek 预设默认开启（通用兼容端点默认保持防 400 逃生门）
+    enableReasoningEffort: cfg.enableReasoningEffort === true || cfg.provider === 'deepseek',
   });
 }
 
