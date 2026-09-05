@@ -143,7 +143,8 @@ export class SessionStore {
 
   /** 默认会话标题（尚未自动命名）判定用 */
   isUntitled(session: Session): boolean {
-    return session.title === '新的会话' || session.title === '';
+    const t = (session.title || '').trim();
+    return !t || t === '默认会话' || t === '新的会话' || t === '未命名会话' || /^新会话[\s0-9:]*$/.test(t);
   }
 
   private fileOf(id: string): string {

@@ -106,10 +106,15 @@ function freezeThink() {
     el.thinkingText.textContent = '思考 · 持续了 ' + ((Date.now() - st.thinkT0) / 1000).toFixed(0) + ' 秒';
   }
 }
-export function setBusy(busy) {
-  st.busy = busy;
-  // 发送按钮保持可用：忙碌时发送 = 排队（后端 queued）
-  el.input.placeholder = busy ? '循环进行中，继续输入将自动排队…' : '输入消息，Enter 发送，Shift+Enter 换行；@ 引用文件';
+export function setBusy(busy, sessionId) {
+  const sid = sessionId || st.currentSessionId;
+  if (sid) {
+    if (busy) st.busySessions.add(sid);
+    else st.busySessions.delete(sid);
+  }
+  st.busy = st.currentSessionId ? st.busySessions.has(st.currentSessionId) : busy;
+  // 发送按钮保持可用：当前会话忙碌时发送 = 排队（后端 queued）
+  el.input.placeholder = st.busy ? '当前会话进行中，继续输入将排队…' : '输入消息，Enter 发送，Shift+Enter 换行；@ 引用文件';
 }
 /* ================= 进程卡 ================= */
 export function showStatusCard() {
@@ -225,9 +230,9 @@ export function onToolResult(p) {
 export function onLoopDone(p) {
   flushChunk(p.messageId);
   logEvent('loop-done', p);
+  setBusy(false, p.sessionId);
   if (!isCurrentSession(p)) return;
   freezeThink();
-  setBusy(false);
   const block = st.currentMessageId === p.messageId ? st.currentAssistant : null;
   const contentEl = block ? block.firstChild : null;
   if (contentEl && p.content && !contentEl.textContent) contentEl.textContent = p.content;
@@ -239,10 +244,10 @@ export function onLoopDone(p) {
 export function onLoopErr(p) {
   flushChunk(p.messageId);
   logEvent('loop-error', p);
+  setBusy(false, p.sessionId);
   if (!isCurrentSession(p)) return;
   freezeThink();
   hideStatusCard();
-  setBusy(false);
   const e = p.error || {};
   ensureMsgCol();
   const row = h('div', 'tool-row tool-row-fail');

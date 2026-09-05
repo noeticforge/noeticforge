@@ -41,7 +41,7 @@ export const el = {
 export const dropdownRoot = $('#dropdown-root');
 
 export const st = {
-  busy: false, currentSessionId: null, sessions: [], appInfo: null, selectedProvider: null,
+  busy: false, busySessions: new Set(), currentSessionId: null, sessions: [], appInfo: null, selectedProvider: null,
   tools: new Map(),            // toolCallId -> { row, t0, name, args, statusEl, outBox, output }
   thinkT0: 0, thinkTimer: null, thinkLive: false,
   scT0: 0, scTimer: null, scToolCount: 0, scDone: 0,
@@ -51,6 +51,8 @@ export const st = {
   attachments: [],             // 待发送附件 [{name,kind,mediaType,data?,text?}]
   termStarted: false,
 };
+
+export const isSessionBusy = (sid) => st.busySessions.has(sid || st.currentSessionId);
 
 export const OUT_LIMIT = 200;
 export const POLICY_LABEL = { 'ask-before-change': '变更前确认', 'auto-edit': '自动编辑', plan: '计划模式', full: '完全访问' };

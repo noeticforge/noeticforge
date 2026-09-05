@@ -91,10 +91,11 @@ export async function loadSessions() {
 }
 
 export async function doSwitchSession(id, opts = {}) {
-  if (st.busy && !opts.silent) { toast(ERR_TEXT.E_LOOP_BUSY); return; }
+  // 允许随时切换会话查看历史或开启新会话任务；会话间任务互不阻塞
   const r = await invoke(window.agentBase.switchSession({ id }), '切换会话');
   if (!r.ok) return;
   st.currentSessionId = id;
+  st.busy = st.busySessions.has(id);
   el.chatTitle.textContent = r.data.session.title || 'agent-base';
   chatHandlers.renderHistory(r.data.session.messages || []);
   renderSessions();
@@ -105,6 +106,7 @@ export async function newSession() {
   const r = await invoke(window.agentBase.createSession({}), '新建会话');
   if (r.ok && r.data.session) {
     st.currentSessionId = r.data.session.id;
+    st.busy = false;
     el.chatTitle.textContent = r.data.session.title || '新的会话';
     chatHandlers.resetChatView();
     renderSessions();
