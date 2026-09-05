@@ -253,13 +253,6 @@ export function onLoopErr(p) {
   msgCol.appendChild(row);
   scrollBottom();
 }
-  row.appendChild(h('div', 'tool-row-head', null)).append(
-    h('span', 't-ico', '⛔'), h('span', 't-name', '循环出错'),
-    h('span', 't-summary', [e.code, e.message].filter(Boolean).join(' · ')),
-  );
-  msgCol.appendChild(row);
-  scrollBottom();
-}
 /** 从会话消息数组重建扁平对话流 */
 export function renderHistory(messages) {
   resetChatView();
