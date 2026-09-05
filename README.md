@@ -4,7 +4,7 @@
 愿景与路线图见 [`docs/DEVELOPMENT_PLAN.md`](docs/DEVELOPMENT_PLAN.md)；[贡献指南](CONTRIBUTING.md)。
 
 > 项目归属 [noeticforge](https://github.com/noeticforge) 组织 · 维护者 [@Ljj041120](https://github.com/Ljj041120) ·
-> 最新版本报告见 [`docs/V0.5.1_UPDATE_REPORT.md`](docs/V0.5.1_UPDATE_REPORT.md) · 重构报告见 [`docs/REFACTOR_REPORT.md`](docs/REFACTOR_REPORT.md)
+> 里程碑大版本报告见 [`docs/V0.5.6_MILESTONE_RELEASE.md`](docs/V0.5.6_MILESTONE_RELEASE.md) · 重构报告见 [`docs/REFACTOR_REPORT.md`](docs/REFACTOR_REPORT.md)
 
 ## 你拿到的是什么
 

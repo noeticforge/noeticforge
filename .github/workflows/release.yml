@@ -34,3 +34,28 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # 禁用自动探测未配置的代码签名证书
           CSC_IDENTITY_AUTO_DISCOVERY: false
+
+  publish-release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Automatically Publish Release (Remove Draft & Set as Latest)
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tag = context.ref.replace('refs/tags/', '');
+            const { owner, repo } = context.repo;
+            const releases = await github.rest.repos.listReleases({ owner, repo, per_page: 20 });
+            const rel = releases.data.find(r => r.tag_name === tag);
+            if (rel) {
+              await github.rest.repos.updateRelease({
+                owner,
+                repo,
+                release_id: rel.id,
+                draft: false,
+                make_latest: 'true',
+              });
+              console.log(`🚀 Release ${tag} 已全自动解除 Draft，正式设置为 GitHub Latest 发布版！`);
+            } else {
+              console.log(`未找到与标签 ${tag} 匹配的 Release`);
+            }
