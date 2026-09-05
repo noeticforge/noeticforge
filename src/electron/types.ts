@@ -93,7 +93,8 @@ export type PushChannel =
   | 'plugins-changed'
   | 'sessions-changed'
   | 'mcp-status-changed'
-  | 'term-data';
+  | 'term-data'
+  | 'updater-state';
 
 export interface AgentServiceOptions {
   /** 项目根目录（config.json / plugins/ / sessions/ 所在地） */

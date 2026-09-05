@@ -34,8 +34,9 @@ export interface ToolResult {
   /**
    * UI 渲染提示（富插件协议 v2）：'markdown' | 'code' | 'diff' | 'table'。
    * 仅影响展示，不影响喂给模型的内容。不开放任意 HTML。
+   * 也支持对象形式 { type, content }，content 为独立富渲染文本。
    */
-  render?: string;
+  render?: string | { type: string; content: string };
 }
 
 export interface ToolContext {

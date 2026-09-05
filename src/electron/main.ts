@@ -18,11 +18,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appDir = app.isPackaged ? path.dirname(process.execPath) : process.cwd();
 
 // 如果系统环境配置了私有仓库 Token，确保注入 process.env 供 electron-updater 访问
-if (!process.env.GH_TOKEN && !process.env.GITHUB_TOKEN) {
-  try {
-    const regToken = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
-    if (regToken) process.env.GH_TOKEN = regToken;
-  } catch {}
+if (!process.env.GH_TOKEN && process.env.GITHUB_TOKEN) {
+  process.env.GH_TOKEN = process.env.GITHUB_TOKEN;
 }
 
 let win: BrowserWindow | null = null;

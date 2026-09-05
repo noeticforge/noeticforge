@@ -1,7 +1,7 @@
 const { app } = require('electron');
 const { autoUpdater } = require('electron-updater');
 
-process.env.GH_TOKEN = process.env.GH_TOKEN || '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';
+
 autoUpdater.autoDownload = false;
 autoUpdater.logger = console;
 

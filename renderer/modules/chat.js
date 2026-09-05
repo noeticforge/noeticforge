@@ -77,9 +77,13 @@ function finishToolRow(toolCallId, result) {
   t.dur.textContent = (ms / 1000).toFixed(1) + 's';
   if (!t.ok && result.error) t.sum.textContent += ' · ' + result.error;
   t.output = result.output || '';
-  if (result.render === 'markdown' && typeof marked !== 'undefined') {
-    t.out.classList.remove('hidden');
-    t.out.appendChild(renderMarkdown(trunc(t.output, 4000)));
+  if (typeof marked !== 'undefined') {
+    const renderType = typeof result.render === 'object' ? result.render?.type : result.render;
+    const renderText = typeof result.render === 'object' ? result.render?.content : t.output;
+    if (renderType === 'markdown' && renderText) {
+      t.out.classList.remove('hidden');
+      t.out.appendChild(renderMarkdown(trunc(renderText, 4000)));
+    }
   }
   scrollBottom();
 }
@@ -253,13 +257,7 @@ export function onLoopErr(p) {
   msgCol.appendChild(row);
   scrollBottom();
 }
-  row.appendChild(h('div', 'tool-row-head', null)).append(
-    h('span', 't-ico', '⛔'), h('span', 't-name', '循环出错'),
-    h('span', 't-summary', [e.code, e.message].filter(Boolean).join(' · ')),
-  );
-  msgCol.appendChild(row);
-  scrollBottom();
-}
+
 /** 从会话消息数组重建扁平对话流 */
 export function renderHistory(messages) {
   resetChatView();
