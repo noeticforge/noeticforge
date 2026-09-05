@@ -1,6 +1,6 @@
 {
   "name": "agent-base",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "description": "开源桌面端 AI Agent 壳：Agent 循环引擎 + 插件/MCP 生态 + 多会话 + 审批治理",
   "type": "module",
   "main": "dist/src/electron/main.js",
