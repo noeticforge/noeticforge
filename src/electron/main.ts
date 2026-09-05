@@ -14,11 +14,22 @@ import { UpdateManager } from './updater.js';
 // ESM 模式下没有 __dirname，用 import.meta.url 推导
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// 智能定位应用数据与配置目录（开发时用 cwd，打包安装运行时使用可执行文件同级目录）
+const appDir = app.isPackaged ? path.dirname(process.execPath) : process.cwd();
+
+// 如果系统环境配置了私有仓库 Token，确保注入 process.env 供 electron-updater 访问
+if (!process.env.GH_TOKEN && !process.env.GITHUB_TOKEN) {
+  try {
+    const regToken = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
+    if (regToken) process.env.GH_TOKEN = regToken;
+  } catch {}
+}
+
 let win: BrowserWindow | null = null;
 let terminal: TerminalManager | null = null;
 let updater: UpdateManager | null = null;
 const service = new AgentService({
-  appDir: process.cwd(),
+  appDir,
   pushEvent: (channel, payload) => {
     if (win && !win.isDestroyed()) {
       win.webContents.send(channel, payload);
@@ -71,7 +82,7 @@ app.whenReady().then(async () => {
   ipcMain.on('term-stop', () => term.stop());
 
   // 自动更新（默认关闭；仅 config.json autoUpdate.enabled=true 时启用）
-  updater = new UpdateManager(process.cwd(), (channel, payload) => {
+  updater = new UpdateManager(appDir, (channel, payload) => {
     if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
   });
   handle('check-updates', () => updater!.checkUpdates());

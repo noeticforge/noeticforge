@@ -119,6 +119,7 @@ export class UpdateManager {
       // 强制「不静默」：检查到新版本也不自动下载，退出进程也不自动安装
       this.updater.autoDownload = false;
       this.updater.autoInstallOnAppQuit = false;
+      try { this.updater.logger = console; } catch {}
       this.bindEvents();
     }
   }

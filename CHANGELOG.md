@@ -2,6 +2,14 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。所有对外行为变化（IPC 通道、事件 payload、插件协议、错误码）都必须记录在此。
 
+## [0.5.4] - 2026-09-05（自动更新安装目录定位与私有仓库 Token 修复，何惜）
+
+### 修复
+- **桌面快捷方式启动时读取配置文件失败导致自动更新被静默关闭的 Bug**：
+  - 修复 `main.ts` 写死 `process.cwd()` 导致从桌面快捷方式启动时工作目录飘至用户根目录的问题；
+  - 引入智能目录判定：打包安装环境优先使用 `path.dirname(process.execPath)` 定位配置与数据，确保准确读取 `config.json` 中的 `autoUpdate.enabled`；
+  - 自动从 Windows 系统/用户环境变量映射读取 `GH_TOKEN` 注入 `process.env`，彻底解决私有 GitHub Releases 401 权限校验失败问题。
+
 ## [0.5.3] - 2026-09-05（响应速度与 Prompt 缓存极致优化，何惜）
 
 ### 性能优化与体验增强
