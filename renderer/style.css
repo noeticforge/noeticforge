@@ -250,7 +250,8 @@ body.theme-dark #sidebar{background:rgba(10,13,26,.42)}
 
 /* 底部富输入框 */
 #composer{flex:0 0 auto;padding:6px 36px 16px;max-width:912px;width:100%;margin:0 auto}
-.composer-card{border-radius:18px;padding:10px 12px 9px}
+.composer-card{border-radius:18px;padding:10px 12px 9px;transition:border-color .18s, box-shadow .18s}
+.composer-card.drag-over{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent), 0 8px 32px rgba(90,130,255,.25);background:var(--active)}
 #message-input{
   width:100%;resize:none;border:none;background:transparent;outline:none;
   font-family:inherit;font-size:14px;line-height:1.55;max-height:180px;color:var(--txt);

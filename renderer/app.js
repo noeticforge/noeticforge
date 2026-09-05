@@ -67,6 +67,22 @@ function init() {
   el.input.addEventListener('input', () => { autoGrow(); maybeOpenAtPicker(); });
   el.scStop.addEventListener('click', () => invoke(window.agentBase.stop(), '停止生成'));
 
+  // 拖拽文件进入输入框：自动解析为附件芯片（图片/代码文本）
+  const composerCard = $('.composer-card');
+  if (composerCard) {
+    ['dragenter', 'dragover'].forEach((ev) => {
+      composerCard.addEventListener(ev, (e) => { e.preventDefault(); e.stopPropagation(); composerCard.classList.add('drag-over'); });
+    });
+    ['dragleave', 'dragend'].forEach((ev) => {
+      composerCard.addEventListener(ev, (e) => { e.preventDefault(); e.stopPropagation(); composerCard.classList.remove('drag-over'); });
+    });
+    composerCard.addEventListener('drop', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      composerCard.classList.remove('drag-over');
+      if (e.dataTransfer?.files?.length) handleDropFiles(e.dataTransfer.files);
+    });
+  }
+
   // 下拉
   el.btnPlus.addEventListener('click', () => (st.activeMenu ? closeMenu() : openPlusMenu()));
   el.btnPolicy.addEventListener('click', () => (st.activeMenu ? closeMenu() : openPolicyMenu()));
