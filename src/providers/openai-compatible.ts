@@ -48,6 +48,7 @@ export class OpenAICompatibleProvider implements LLMProvider {
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${this.opts.apiKey}`,
+        Connection: 'keep-alive',
       },
       body: JSON.stringify(body),
       signal: chatOptions?.signal,
@@ -121,7 +122,11 @@ async function consumeSseStream(
       const delta = event.choices?.[0]?.delta;
       if (!delta) continue;
 
-      if (typeof delta.content === 'string' && delta.content.length > 0) {
+      // 支持 DeepSeek-R1 / Qwen 等思维链流式字段 (reasoning_content)
+      const thought = delta.reasoning_content;
+      if (typeof thought === 'string' && thought.length > 0) {
+        onChunk(thought);
+      } else if (typeof delta.content === 'string' && delta.content.length > 0) {
         content += delta.content;
         onChunk(delta.content);
       }

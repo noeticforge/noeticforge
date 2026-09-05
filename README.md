@@ -31,7 +31,7 @@ src/
     └── preload.ts            contextBridge 暴露 window.agentBase（UI 唯一入口）
 
 renderer/                     桌面 UI（会话侧栏/流式聊天/Markdown/审批弹窗/插件与 MCP 管理/模型配置）
-plugins/builtin/              内置插件：read-file / write-file / shell-exec（命令执行，强制审批）/ web-fetch（网页抓取）/ kb（本地知识库检索）/ ask-user（AI 决策交互选择）
+plugins/builtin/              内置插件：read-file / write-file / shell-exec（命令执行，强制审批）/ web-fetch（网页抓取）/ kb（本地知识库检索）/ ask-user（AI 决策交互选择）/ system-master（全能系统管家，全盘读写/桌面直投/命令指挥）
 plugins/user/                 用户插件安装位置        plugins/settings/ 插件设置值
 sdk/                          @agent-base/sdk：插件作者的类型与 definePlugin
 templates/plugin-basic/       插件模板（5 分钟出第一个插件）

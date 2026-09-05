@@ -53,8 +53,9 @@ export async function runLoop(input: RunLoopInput): Promise<RunLoopResult> {
     const trimmed = trimHistory(input.history, input.contextTokenBudget);
     contextMessages = trimmed.messages;
     if (trimmed.dropped > 0) {
+      // 保持前缀文本完全静态固定，杜绝因数字变动破坏大模型的 Prompt Cache（前缀缓存）
       contextMessages = [
-        { role: 'system', content: `（因上下文长度限制，较早的 ${trimmed.dropped} 条历史消息已被省略）` },
+        { role: 'system', content: '（因上下文长度限制，较早的部分历史消息已被省略）' },
         ...contextMessages,
       ];
     }

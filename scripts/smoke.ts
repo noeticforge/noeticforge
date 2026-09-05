@@ -29,10 +29,10 @@ async function main(): Promise<void> {
   // 1. 插件加载
   const registry = new ToolRegistry();
   const report = await loadPluginsFromRoot(path.resolve('plugins'), registry);
-  const BUILTIN_PLUGINS = ['read-file', 'write-file', 'shell-exec', 'web-fetch', 'kb', 'ask-user'];
+  const BUILTIN_PLUGINS = ['read-file', 'write-file', 'shell-exec', 'web-fetch', 'kb', 'ask-user', 'system-master'];
   check(
     report.loaded.length === BUILTIN_PLUGINS.length && BUILTIN_PLUGINS.every((n) => report.loaded.includes(n)),
-    `${BUILTIN_PLUGINS.length} 个内置插件全部加载成功（含 kb 知识库与 ask-user 交互决策）`,
+    `${BUILTIN_PLUGINS.length} 个内置插件全部加载成功（含 kb、ask-user 及 system-master 全能系统管家）`,
   );
   check(report.failed.length === 0, `无插件加载失败${report.failed.length ? `: ${JSON.stringify(report.failed)}` : ''}`);
   // 工具数 ≥ 插件数（kb 提供两个工具：kb.search / kb.reindex）

@@ -27,9 +27,7 @@ export function addUserBlock(content, opts = {}) {
     block.appendChild(document.createTextNode(content));
   }
   if (opts.attachments?.length) {
-    for (const a of opts.attachments) {
-      block.appendChild(h('span', 'queued-badge', (a.kind === 'image' ? '🖼 ' : '📎 ') + a.name));
-    }
+    for (const a of opts.attachments) block.appendChild(h('span', 'queued-badge', (a.kind === 'image' ? '🖼 ' : '📎 ') + a.name));
   }
   if (opts.queuedBadge) block.appendChild(h('span', 'queued-badge', '已排队'));
   msgCol.appendChild(block);
@@ -43,8 +41,7 @@ function ensureAssistantBlock(messageId) {
   if (st.currentMessageId !== messageId || !st.currentAssistant || !st.currentAssistant.isConnected) {
     st.currentMessageId = messageId;
     st.currentAssistant = h('div', 'msg-block-assistant');
-    const sc = h('div', 'stream-content');
-    st.currentAssistant.appendChild(sc);
+    st.currentAssistant.appendChild(h('div', 'stream-content'));
     msgCol.appendChild(st.currentAssistant);
     msgCol.appendChild(h('div', 'msg-gap'));
   }
@@ -55,23 +52,17 @@ function addToolRow(toolCallId, name, args) {
   ensureMsgCol();
   const row = h('div', 'tool-row pending');
   const head = h('div', 'tool-row-head');
-  const ico = h('span', 't-ico', '◌');
-  const nm = h('span', 't-name', name);
-  const sum = h('span', 't-summary', argsSummary(args));
-  const dur = h('span', 't-dur', '');
-  head.append(ico, nm, sum, dur);  row.appendChild(head);
+  const ico = h('span', 't-ico', '◌'), nm = h('span', 't-name', name), sum = h('span', 't-summary', argsSummary(args)), dur = h('span', 't-dur', '');
+  head.append(ico, nm, sum, dur); row.appendChild(head);
   const out = h('div', 'tool-row-output hidden');
-  row.appendChild(out);
-  msgCol.appendChild(row);
-  msgCol.appendChild(h('div', 'msg-gap'));
+  row.appendChild(out); msgCol.appendChild(row); msgCol.appendChild(h('div', 'msg-gap'));
   st.tools.set(toolCallId, { row, ico, dur, out, sum, name, t0: Date.now(), output: '', ok: null });
   row.addEventListener('click', () => {
     if (!out.textContent && st.tools.get(toolCallId)) {
       out.textContent = '';
       out.appendChild(h('pre', null, trunc(st.tools.get(toolCallId).output || '（无输出）', 4000)));
     }
-    out.classList.toggle('hidden');
-    scrollBottom();
+    out.classList.toggle('hidden'); scrollBottom();
   });
   scrollBottom();
   return row;
@@ -79,13 +70,11 @@ function addToolRow(toolCallId, name, args) {
 function finishToolRow(toolCallId, result) {
   const t = st.tools.get(toolCallId);
   if (!t) return;
-  t.ok = !!result.ok;
-  const ms = Date.now() - t.t0;
+  t.ok = !!result.ok; const ms = Date.now() - t.t0;
   t.row.classList.remove('pending');
   t.row.classList.add(t.ok ? 'tool-row-ok' : 'tool-row-fail');
   t.ico.textContent = t.ok ? '✓' : '✗';
   t.dur.textContent = (ms / 1000).toFixed(1) + 's';
-  // 失败时把错误码直接亮在行上（用户不用展开就能看到拒绝原因）
   if (!t.ok && result.error) t.sum.textContent += ' · ' + result.error;
   t.output = result.output || '';
   if (result.render === 'markdown' && typeof marked !== 'undefined') {
@@ -98,8 +87,7 @@ function finishToolRow(toolCallId, result) {
 export function startThink() {
   stopThink();
   st.thinkT0 = Date.now();
-  el.thinking.classList.remove('hidden');
-  el.thinking.classList.add('live');
+  el.thinking.classList.remove('hidden'); el.thinking.classList.add('live');
   const tick = () => {
     el.thinkingText.textContent = '思考 · ' + ((Date.now() - st.thinkT0) / 1000).toFixed(0) + ' 秒';
     st.thinkTimer = setTimeout(tick, 500);
@@ -113,8 +101,7 @@ export function stopThink(final) {
 }
 function freezeThink() {
   if (st.thinkTimer) {
-    clearTimeout(st.thinkTimer);
-    st.thinkTimer = null;
+    clearTimeout(st.thinkTimer); st.thinkTimer = null;
     el.thinking.classList.remove('live');
     el.thinkingText.textContent = '思考 · 持续了 ' + ((Date.now() - st.thinkT0) / 1000).toFixed(0) + ' 秒';
   }
@@ -175,14 +162,24 @@ export function markLastUserQueued() {
   const last = blocks[blocks.length - 1];
   if (last && !last.querySelector('.queued-badge')) last.appendChild(h('span', 'queued-badge', '已排队'));
 }
+let pendingChunkText = '';
+let chunkRafId = null;
+function flushChunk(msgId) {
+  if (!pendingChunkText) return;
+  const block = ensureAssistantBlock(msgId);
+  block.textContent += pendingChunkText;
+  pendingChunkText = '';
+  scrollBottom();
+  chunkRafId = null;
+}
 /* ================= IPC 推送处理 ================= */
 export function onChunk(p) {
-  logEvent('message-chunk', p);
-  if (!isCurrentSession(p)) return;
-  if (!p.delta) return;
+  if (!isCurrentSession(p) || !p.delta) return;
   freezeThink();
-  ensureAssistantBlock(p.messageId).textContent += p.delta;
-  scrollBottom();
+  pendingChunkText += p.delta;
+  if (!chunkRafId) {
+    chunkRafId = requestAnimationFrame(() => flushChunk(p.messageId));
+  }
 }
 export function onToolStart(p) {
   logEvent('tool-started', p);
@@ -226,24 +223,21 @@ export function onToolResult(p) {
   if (st.busy) startThink();
 }
 export function onLoopDone(p) {
+  flushChunk(p.messageId);
   logEvent('loop-done', p);
   if (!isCurrentSession(p)) return;
   freezeThink();
-  // 先解除忙态再做文本渲染：外部观察者（如 E2E）在文本出现后立即操作时，
-  // 不会撞上 busy 尚未清除的窗口（时序竞态，参照 H1 的教训）
   setBusy(false);
   const block = st.currentMessageId === p.messageId ? st.currentAssistant : null;
   const contentEl = block ? block.firstChild : null;
   if (contentEl && p.content && !contentEl.textContent) contentEl.textContent = p.content;
-  if (contentEl && contentEl.textContent) {
-    const md = renderMarkdown(contentEl.textContent);
-    contentEl.replaceWith(md);
-  }
+  if (contentEl && contentEl.textContent) contentEl.replaceWith(renderMarkdown(contentEl.textContent));
   hideStatusCard();
   if (p.stopped) toast('已停止生成', 'info');
-  loadSessions(); // 时间戳/标题可能变了
+  loadSessions();
 }
 export function onLoopErr(p) {
+  flushChunk(p.messageId);
   logEvent('loop-error', p);
   if (!isCurrentSession(p)) return;
   freezeThink();
@@ -252,6 +246,13 @@ export function onLoopErr(p) {
   const e = p.error || {};
   ensureMsgCol();
   const row = h('div', 'tool-row tool-row-fail');
+  row.appendChild(h('div', 'tool-row-head')).append(
+    h('span', 't-ico', '✗'), h('span', 't-name', '循环出错'),
+    h('span', 't-summary', [e.code, e.message].filter(Boolean).join(' · ')),
+  );
+  msgCol.appendChild(row);
+  scrollBottom();
+}
   row.appendChild(h('div', 'tool-row-head', null)).append(
     h('span', 't-ico', '⛔'), h('span', 't-name', '循环出错'),
     h('span', 't-summary', [e.code, e.message].filter(Boolean).join(' · ')),
@@ -286,16 +287,9 @@ export function renderHistory(messages) {
       }
     }
   }
-  st.currentAssistant = null;
-  st.currentMessageId = null;
-  scrollBottom();
+  st.currentAssistant = null; st.currentMessageId = null; scrollBottom();
 }
 export function resetChatView() {
-  el.messages.innerHTML = '';
-  ensureMsgCol();
-  st.tools.clear();
-  st.currentAssistant = null;
-  st.currentMessageId = null;
-  stopThink();
-  hideStatusCard();
+  el.messages.innerHTML = ''; ensureMsgCol(); st.tools.clear();
+  st.currentAssistant = null; st.currentMessageId = null; stopThink(); hideStatusCard();
 }
