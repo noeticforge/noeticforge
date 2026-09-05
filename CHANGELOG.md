@@ -16,7 +16,7 @@
   - `OpenAICompatibleProvider` 针对 `delta.reasoning_content` 精准标记 `kind='thought'` 进行分流，正文按 `kind='content'` 分流；
   - `agent-service.ts` 确保思考流仅实时推送到 UI，绝不混入 `partialContent` 与 `session.messages`。
 
-## [0.5.8] - 2026-09-06（官方插件市场 Marketplace 架构升级，何惜）
+## [0.5.9] - 2026-09-06（官方插件市场 Marketplace 架构升级，何惜）
 
 ### 新增
 - **官方插件市场（Plugin Marketplace）架构落地**：
