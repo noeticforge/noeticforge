@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 
 /**
  * preload：把 IPC 通道包装成类型友好的 window.agentBase API 暴露给渲染进程。
@@ -149,6 +149,14 @@ const agentBase = {
   installUpdate: () => invoke('install-update'),
   getUpdaterState: () => invoke('get-updater-state'),
   setAutoUpdateEnabled: (req: { enabled: boolean }) => invoke('set-auto-update-enabled', req),
+
+  // ---- 辅助工具 ----
+  getPathForFile: (file: File) => {
+    try {
+      if (typeof webUtils?.getPathForFile === 'function') return webUtils.getPathForFile(file);
+    } catch {}
+    return (file as unknown as { path?: string })?.path || '';
+  },
 
   // ---- 订阅（主进程 → UI 推送）----
   on,

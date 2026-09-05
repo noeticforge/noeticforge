@@ -68,7 +68,7 @@ async function main(): Promise<void> {
   ]);
   const service = new AgentService({ appDir, pushEvent: push, initialProvider: mock });
   await service.init();
-  const BUILTIN_TOTAL = 8; // read-file/write-file/shell-exec/web-fetch/kb/ask-user/system-master + core-subagent
+  const BUILTIN_TOTAL = 9; // read-file/write-file/shell-exec/web-fetch/kb/ask-user/system-master/m3e-canvas + core-subagent
   check(events.some((e) => e.channel === 'plugins-changed' && e.payload.plugins.length === BUILTIN_TOTAL), `init 推送 plugins-changed（${BUILTIN_TOTAL - 1} 内置 + core-subagent）`);
 
   // 非法消息

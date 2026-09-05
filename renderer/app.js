@@ -14,7 +14,7 @@ import { openSettings, renderProviderDetail, modelChip, saveProvider, renderMcpP
 import { setSessionChatHandlers, filteredSessions, renderSessions, loadSessions, doSwitchSession, newSession, onSessionsChanged } from './modules/session.js';
 import { onApproval, onApprove, onReject, onChoiceConfirm, onChoiceCancel } from './modules/approval.js';
 import { ensureMsgCol, onChunk, onToolStart, onToolResult, onLoopDone, onLoopErr, renderHistory, resetChatView } from './modules/chat.js';
-import { handleSend, maybeOpenAtPicker, pickAttachments } from './modules/composer.js';
+import { handleSend, maybeOpenAtPicker, pickAttachments, handleDropFiles } from './modules/composer.js';
 
 /* ================= 窗口控制 ================= */
 function initWindowControls() {
