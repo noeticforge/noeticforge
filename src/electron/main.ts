@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import { existsSync, copyFileSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AgentService } from './agent-service.js';
@@ -14,8 +15,21 @@ import { UpdateManager } from './updater.js';
 // ESM 模式下没有 __dirname，用 import.meta.url 推导
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// 智能定位应用数据与配置目录（开发时用 cwd，打包安装运行时使用可执行文件同级目录）
-const appDir = app.isPackaged ? path.dirname(process.execPath) : process.cwd();
+// 用户数据目录绝对隔离：打包态必须使用 app.getPath('userData')（Windows 为 AppData/Roaming/agent-base），
+// 绝不能存放在安装目录 Programs/agent-base 下，否则 NSIS 自动更新或覆盖安装时会被一锅端清空！
+function resolveDataDir(): string {
+  if (!app.isPackaged) return process.cwd();
+  const userData = app.getPath('userData');
+  try { mkdirSync(userData, { recursive: true }); } catch {}
+  // 平滑迁移：若安装目录有老配置文件且 userData 尚无，自动拯救搬迁一份
+  try {
+    const legacyCfg = path.join(path.dirname(process.execPath), 'config.json');
+    const targetCfg = path.join(userData, 'config.json');
+    if (existsSync(legacyCfg) && !existsSync(targetCfg)) copyFileSync(legacyCfg, targetCfg);
+  } catch {}
+  return userData;
+}
+const appDir = resolveDataDir();
 
 // 如果系统环境配置了私有仓库 Token，确保注入 process.env 供 electron-updater 访问
 if (!process.env.GH_TOKEN && !process.env.GITHUB_TOKEN) {
