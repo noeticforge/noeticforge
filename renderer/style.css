@@ -575,6 +575,24 @@ body.theme-dark .modal-mask{background:rgba(3,5,12,.5)}
 }
 .choice-feedback-wrap input:focus{border-color:var(--accent)}
 
+/* ================= 软件版本更新卡片 ================= */
+.update-card{padding:16px 18px;margin-top:8px;border-radius:var(--r-md);display:flex;flex-direction:column;gap:14px}
+.update-row{display:flex;justify-content:space-between;align-items:center}
+.update-actions{display:flex;align-items:center;gap:10px}
+.update-banner{
+  background:rgba(90,130,255,.08);border:1px solid rgba(90,130,255,.2);
+  border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:10px;
+}
+.update-info-line{display:flex;align-items:center;gap:8px}
+.update-tag{font-size:11px;font-weight:700;color:var(--accent);background:var(--active);padding:2px 8px;border-radius:8px}
+.update-ver{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--txt)}
+.update-notes{font-size:12.5px;color:var(--txt-dim);line-height:1.5;max-height:120px;overflow-y:auto;white-space:pre-wrap}
+.update-progress-wrap{display:flex;align-items:center;gap:10px}
+.progress-bar-bg{flex:1;height:8px;background:var(--field-bg);border-radius:4px;overflow:hidden}
+.progress-bar-fill{width:0%;height:100%;background:linear-gradient(90deg, var(--accent), #10a56b);transition:width .2s ease}
+.progress-txt{font-family:var(--mono);font-size:11px;color:var(--txt-dim);min-width:35px}
+.update-btn-group{display:flex;justify-content:flex-end;gap:10px}
+
 /* ================= Toast ================= */
 #toast-box{position:fixed;top:22px;left:50%;transform:translateX(-50%);z-index:500;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none}
 .toast{

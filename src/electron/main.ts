@@ -78,6 +78,7 @@ app.whenReady().then(async () => {
   handle('download-update', () => updater!.downloadUpdate());
   handle('install-update', () => updater!.installUpdate());
   handle('get-updater-state', () => updater!.getState());
+  handle('set-auto-update-enabled', (req: { enabled: boolean }) => updater!.setEnabled(Boolean(req?.enabled)));
   if (updater.isEnabled()) {
     void updater.init();
   }

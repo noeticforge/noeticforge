@@ -184,8 +184,37 @@
         <!-- 常规 -->
         <section class="set-page hidden" data-page="general">
           <h1>常规</h1>
-          <p class="set-desc">应用信息。</p>
+          <p class="set-desc">应用与系统更新管理。</p>
           <div id="general-info" class="kv-list glass-card"></div>
+          <div class="set-block" style="margin-top:20px">
+            <div class="pd-label">软件版本更新</div>
+            <div class="update-card glass-card">
+              <div class="update-row">
+                <label class="check-row">
+                  <input type="checkbox" id="opt-autoupdate"> 自动检查更新
+                </label>
+                <div class="update-actions">
+                  <span id="update-status-tag" class="chip">检查中</span>
+                  <button id="btn-check-update" class="btn-glass">检查更新</button>
+                </div>
+              </div>
+              <div id="update-banner" class="update-banner hidden">
+                <div class="update-info-line">
+                  <span class="update-tag">🚀 发现新版本</span>
+                  <span id="update-new-ver" class="update-ver"></span>
+                </div>
+                <div id="update-notes" class="update-notes"></div>
+                <div id="update-progress-wrap" class="update-progress-wrap hidden">
+                  <div class="progress-bar-bg"><div id="update-progress-bar" class="progress-bar-fill"></div></div>
+                  <span id="update-progress-txt" class="progress-txt">0%</span>
+                </div>
+                <div class="update-btn-group">
+                  <button id="btn-download-update" class="btn-glass btn-glass-primary">立即下载更新</button>
+                  <button id="btn-install-update" class="btn-glass btn-glass-primary hidden">立即重启安装</button>
+                </div>
+              </div>
+            </div>
+          </div>
         </section>
         <!-- 插件 -->
         <section class="set-page hidden" data-page="plugins">

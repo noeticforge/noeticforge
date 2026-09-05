@@ -10,7 +10,7 @@ import { $, el, st } from './modules/state.js';
 import { toast, invoke, closeMenu, autoGrow } from './modules/utils.js';
 import { openPolicyMenu, openModelMenu, openEffortMenu, openPlusMenu, refreshAppInfo, setMenuHandlers } from './modules/menus.js';
 import { logEvent, loadAudit, toggleRightPanel, startTerminal, onTermData } from './modules/right-panel.js';
-import { openSettings, renderProviderDetail, modelChip, saveProvider, renderMcpPage, saveMcpJson, renderPluginsPage, handleInstall, applyTheme, handleFetchModels } from './modules/settings.js';
+import { openSettings, renderProviderDetail, modelChip, saveProvider, renderMcpPage, saveMcpJson, renderPluginsPage, handleInstall, applyTheme, handleFetchModels, onUpdaterState } from './modules/settings.js';
 import { setSessionChatHandlers, filteredSessions, renderSessions, loadSessions, doSwitchSession, newSession, onSessionsChanged } from './modules/session.js';
 import { onApproval, onApprove, onReject, onChoiceConfirm, onChoiceCancel } from './modules/approval.js';
 import { ensureMsgCol, onChunk, onToolStart, onToolResult, onLoopDone, onLoopErr, renderHistory, resetChatView } from './modules/chat.js';
@@ -45,6 +45,7 @@ function subscribe() {
   api.on('plugins-changed', () => { if (!$('#settings-view').classList.contains('hidden')) renderPluginsPage(); });
   api.on('sessions-changed', onSessionsChanged);
   api.on('term-data', onTermData);
+  api.on('updater-state', onUpdaterState);
   api.on('mcp-status-changed', (p) => {
     logEvent('mcp-status-changed', p);
     if (!$('#settings-view').classList.contains('hidden') && !$('#settings-view [data-page="mcp"]').classList.contains('hidden')) renderMcpPage();
@@ -125,6 +126,33 @@ function init() {
   $('#choice-cancel-btn')?.addEventListener('click', onChoiceCancel);
   $('#choice-custom-input')?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') onChoiceConfirm();
+  });
+
+  // 更新控制
+  $('#opt-autoupdate')?.addEventListener('change', async (e) => {
+    await invoke(window.agentBase.setAutoUpdateEnabled({ enabled: e.target.checked }), '更新自动检查设置');
+  });
+  $('#btn-check-update')?.addEventListener('click', async () => {
+    const btn = $('#btn-check-update');
+    btn.disabled = true;
+    try {
+      const r = await invoke(window.agentBase.checkUpdates(), '检查软件更新');
+      if (r.ok && r.data) onUpdaterState(r.data);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+  $('#btn-download-update')?.addEventListener('click', async () => {
+    const btn = $('#btn-download-update');
+    btn.disabled = true;
+    try {
+      await invoke(window.agentBase.downloadUpdate(), '下载软件更新');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+  $('#btn-install-update')?.addEventListener('click', async () => {
+    await invoke(window.agentBase.installUpdate(), '安装软件更新');
   });
 
   // 快捷键

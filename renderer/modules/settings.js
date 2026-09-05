@@ -231,4 +231,58 @@ export async function renderGeneralPage() {
     row.append(h('span', 'kv-key', k), h('span', 'kv-val', v));
     kv.appendChild(row);
   }
+
+  // 渲染自动更新控制与状态
+  if (window.agentBase?.getUpdaterState) {
+    const r = await invoke(window.agentBase.getUpdaterState(), '查询更新状态');
+    if (r.ok && r.data) onUpdaterState(r.data);
+  }
+}
+
+export function onUpdaterState(state) {
+  if (!state) return;
+  const chk = $('#opt-autoupdate');
+  if (chk) chk.checked = Boolean(state.enabled);
+  const tag = $('#update-status-tag');
+  const banner = $('#update-banner');
+  const dlBtn = $('#btn-download-update');
+  const instBtn = $('#btn-install-update');
+  const prgWrap = $('#update-progress-wrap');
+  const prgBar = $('#update-progress-bar');
+  const prgTxt = $('#update-progress-txt');
+
+  const statusText = {
+    disabled: '已关闭', idle: '就绪', checking: '正在检查...',
+    available: '发现新版本', 'not-available': '已是最新版',
+    downloading: '下载中...', downloaded: '下载完成', error: '更新出错'
+  };
+  if (tag) tag.textContent = statusText[state.status] || state.status;
+
+  if (state.status === 'available') {
+    banner?.classList.remove('hidden');
+    $('#update-new-ver').textContent = 'v' + (state.version || '');
+    $('#update-notes').textContent = state.releaseNotes || '包含常规改进与稳定性修复。';
+    dlBtn?.classList.remove('hidden');
+    instBtn?.classList.add('hidden');
+    prgWrap?.classList.add('hidden');
+  } else if (state.status === 'downloading') {
+    banner?.classList.remove('hidden');
+    dlBtn?.classList.add('hidden');
+    prgWrap?.classList.remove('hidden');
+    const p = Math.max(0, Math.min(100, state.percent || 0));
+    if (prgBar) prgBar.style.width = p + '%';
+    if (prgTxt) prgTxt.textContent = p + '%';
+  } else if (state.status === 'downloaded') {
+    banner?.classList.remove('hidden');
+    dlBtn?.classList.add('hidden');
+    prgWrap?.classList.add('hidden');
+    instBtn?.classList.remove('hidden');
+  } else if (state.status === 'not-available' || state.status === 'disabled') {
+    banner?.classList.add('hidden');
+  } else if (state.status === 'error' && state.error) {
+    banner?.classList.remove('hidden');
+    $('#update-notes').textContent = '检查失败: ' + state.error;
+    dlBtn?.classList.add('hidden');
+    instBtn?.classList.add('hidden');
+  }
 }

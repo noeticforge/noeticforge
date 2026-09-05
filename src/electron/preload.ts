@@ -49,6 +49,7 @@ const INVOKE_CHANNELS = [
   'download-update',
   'install-update',
   'get-updater-state',
+  'set-auto-update-enabled',
 ] as const;
 
 const PUSH_CHANNELS = [
@@ -147,6 +148,7 @@ const agentBase = {
   downloadUpdate: () => invoke('download-update'),
   installUpdate: () => invoke('install-update'),
   getUpdaterState: () => invoke('get-updater-state'),
+  setAutoUpdateEnabled: (req: { enabled: boolean }) => invoke('set-auto-update-enabled', req),
 
   // ---- 订阅（主进程 → UI 推送）----
   on,

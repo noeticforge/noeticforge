@@ -1,5 +1,7 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFile } from 'node:fs';
 import path from 'node:path';
+import { promisify } from 'node:util';
+const writeFileAsync = promisify(writeFile);
 // electron-updater 是 CJS 包且 autoUpdater 为懒加载 getter 导出，
 // ESM 命名导入在运行时会报 "does not provide an export named 'autoUpdater'"，
 // 必须默认导入后解构；类型走 type-only 导入（编译期擦除）。
@@ -100,7 +102,7 @@ export class UpdateManager {
   private readonly updater: AppUpdater;
   private readonly appDir: string;
   private readonly push: Push;
-  private readonly enabled: boolean;
+  private enabled: boolean;
   private state: UpdateState;
 
   constructor(appDir: string, push: Push, updater?: AppUpdater) {
@@ -119,6 +121,28 @@ export class UpdateManager {
       this.updater.autoInstallOnAppQuit = false;
       this.bindEvents();
     }
+  }
+
+  /** 开启或关闭自动更新（支持运行时在设置页切换并持久化） */
+  async setEnabled(enabled: boolean): Promise<IpcResult<UpdateState>> {
+    this.enabled = enabled;
+    const cfgPath = path.join(this.appDir, 'config.json');
+    let cfg: Record<string, unknown> = {};
+    if (existsSync(cfgPath)) {
+      try { cfg = JSON.parse(readFileSync(cfgPath, 'utf-8')); } catch { cfg = {}; }
+    }
+    cfg.autoUpdate = { ...(cfg.autoUpdate as Record<string, unknown> || {}), enabled };
+    try {
+      await writeFileAsync(cfgPath, JSON.stringify(cfg, null, 2), 'utf-8');
+    } catch (e) {
+      return fail(`保存自动更新配置失败: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    this.setState({ enabled, status: enabled ? 'idle' : 'disabled' });
+    if (enabled) {
+      this.bindEvents();
+      void this.checkUpdates();
+    }
+    return { ok: true, data: this.state };
   }
 
   /** 是否已启用（config.json autoUpdate.enabled === true） */

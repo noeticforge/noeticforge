@@ -273,4 +273,19 @@ describe('UpdateManager（硬边界：无静默安装）', () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  it('setEnabled 动态开启与关闭自动更新并持久化到 config.json', async () => {
+    const dir = await withAppDir(false);
+    try {
+      const fake = new FakeUpdater();
+      const mgr = makeManager(dir, fake, []);
+      expect(mgr.isEnabled()).toBe(false);
+      await mgr.setEnabled(true);
+      expect(mgr.isEnabled()).toBe(true);
+      await mgr.setEnabled(false);
+      expect(mgr.isEnabled()).toBe(false);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });
