@@ -2,6 +2,33 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。所有对外行为变化（IPC 通道、事件 payload、插件协议、错误码）都必须记录在此。
 
+## [0.5.8] - 2026-09-06（流光液态玻璃「AI 深度思考胶囊」+ 思考流正文分离，何惜）
+
+### 视觉与交互体验革新
+- **全新流光液态玻璃「AI 深度思考胶囊」（Thought Capsule）**：
+  - 彻底终结思考过程与正文内容混杂输出的脏乱体验；
+  - 正文上方独立挂载毛玻璃思考胶囊，边缘带有炫彩极光微光渐变（Aurora Glow）与呼吸动效；
+  - 实时显示思考秒表（如 `AI 深度思考中 · 12 秒…`），思考收尾后自动定格为 `已完成深度思考（耗时 12 秒）`；
+  - **支持点击平滑展开/折叠**：默认保持折叠状态，正文区域干净清爽；点击随时展开查看内凹发光文本框中的完整思考推理链；
+  - 思考过程绝不污染正文 Markdown 与持久化历史。
+- **底层流式分流重构（Thought/Content Separation）**：
+  - `ChatOptions.onChunk` 与 `LoopOptions.onChunk` 升级为 `(delta: string, kind?: 'content' | 'thought') => void`；
+  - `OpenAICompatibleProvider` 针对 `delta.reasoning_content` 精准标记 `kind='thought'` 进行分流，正文按 `kind='content'` 分流；
+  - `agent-service.ts` 确保思考流仅实时推送到 UI，绝不混入 `partialContent` 与 `session.messages`。
+
+## [0.5.8] - 2026-09-06（官方插件市场 Marketplace 架构升级，何惜）
+
+### 新增
+- **官方插件市场（Plugin Marketplace）架构落地**：
+  - 核心底座恢复纯净轻量，移出非核心内置插件，保持基础运行开销极简；
+  - 建立 `registry/registry.json` 官方插件注册表，收录首批官方精选扩展包：
+    - 📦 `system-master`（全能系统管家）：全盘读写、桌面直投、命令调度与硬件扫描；
+    - 🎨 `m3e-canvas`（M3E 画布设计器）：Material 3 原型设计与 AI 提示词导出；
+  - 提供 `scripts/pack-plugins.mjs` 插件标准打包脚本，自动生成带 SHA-256 完整性校验的 `.zip` 扩展包；
+  - 设置页新增「🛒 官方精选插件市场」列表，支持一键在线获取/卸载，并支持本地注册表离线安全回退。
+- **IPC 通道扩充**：
+  - 新增 `list-registry-plugins` 通道，支持前端直接拉取官方扩展仓库。
+
 ## [0.5.7] - 2026-09-06（多会话并发无阻断 + 智能会话总结标题 + 交互决策规范注入，何惜）
 
 ### 核心体验突破

@@ -148,18 +148,11 @@ export class AgentService {
   listPlugins(): IpcResult<{ plugins: PluginInfo[] }> {
     return this.plugins.listPlugins();
   }
-  listProviders(): IpcResult<{ providers: ProviderMeta[] }> {
-    return this.policy.listProviders();
-  }
-  installPlugin(req: { pluginDir: string }): Promise<IpcResult<{ plugin: PluginInfo }>> {
-    return this.plugins.installPlugin(req);
-  }
-  installPluginFromRegistry(req: { name: string; registryUrl?: string }): Promise<IpcResult<{ plugin: PluginInfo }>> {
-    return this.plugins.installPluginFromRegistry(req);
-  }
-  uninstallPlugin(req: { name: string }): Promise<IpcResult<{ plugin: PluginInfo }>> {
-    return this.plugins.uninstallPlugin(req);
-  }
+  listProviders(): IpcResult<{ providers: ProviderMeta[] }> { return this.policy.listProviders(); }
+  installPlugin(req: { pluginDir: string }): Promise<IpcResult<{ plugin: PluginInfo }>> { return this.plugins.installPlugin(req); }
+  installPluginFromRegistry(req: { name: string; registryUrl?: string }): Promise<IpcResult<{ plugin: PluginInfo }>> { return this.plugins.installPluginFromRegistry(req); }
+  listRegistryPlugins(req?: { registryUrl?: string }): Promise<IpcResult<{ plugins: Array<Record<string, unknown>> }>> { return this.plugins.listRegistryPlugins(req); }
+  uninstallPlugin(req: { name: string }): Promise<IpcResult<{ plugin: PluginInfo }>> { return this.plugins.uninstallPlugin(req); }
   setModelConfig(req: { config: Record<string, unknown> }): Promise<IpcResult<null>> {
     return this.policy.setModelConfig(req);
   }
@@ -242,9 +235,9 @@ export class AgentService {
           reasoningEffort: policy.reasoningEffort,
           pluginSettings: (name) => this.plugins.getPluginSettings(name),
           ctxExtras: () => ({ services: { runSubagent: (args: Record<string, unknown>) => this.subagents.runSubagent(args, sessionId, running.messageId) } }),
-          onChunk: (delta) => {
-            running.partialContent += delta;
-            this.pushEvent('message-chunk', { messageId: running.messageId, sessionId, role: 'assistant', delta });
+          onChunk: (delta, kind) => {
+            if (kind !== 'thought') running.partialContent += delta;
+            this.pushEvent('message-chunk', { messageId: running.messageId, sessionId, role: 'assistant', delta, kind: kind || 'content' });
           },
           onEvent: (e) => this.onLoopEvent(sessionId, running.messageId, e),
           requestApproval: (call) => this.audits.requestApproval(running.messageId, call),

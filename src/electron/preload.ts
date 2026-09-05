@@ -16,6 +16,7 @@ const INVOKE_CHANNELS = [
   'list-plugins',
   'install-plugin',
   'install-plugin-from-registry',
+  'list-registry-plugins',
   'uninstall-plugin',
   'get-plugin-settings',
   'set-plugin-settings',
@@ -101,6 +102,7 @@ const agentBase = {
   installPlugin: (req: { pluginDir: string }) => invoke('install-plugin', req),
   installPluginFromRegistry: (req: { name: string; registryUrl?: string }) =>
     invoke('install-plugin-from-registry', req),
+  listRegistryPlugins: (req?: { registryUrl?: string }) => invoke('list-registry-plugins', req),
   uninstallPlugin: (req: { name: string }) => invoke('uninstall-plugin', req),
   getPluginSettings: (req: { name: string }) => invoke('get-plugin-settings', req),
   setPluginSettings: (req: { name: string; values: Record<string, unknown> }) =>

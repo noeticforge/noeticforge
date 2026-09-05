@@ -127,6 +127,7 @@ app.whenReady().then(async () => {
   handle('list-plugins', () => service.listPlugins());
   handle('install-plugin', (req) => service.installPlugin(req));
   handle('install-plugin-from-registry', (req) => service.installPluginFromRegistry(req));
+  handle('list-registry-plugins', (req) => service.listRegistryPlugins(req));
   handle('uninstall-plugin', (req) => service.uninstallPlugin(req));
   handle('get-plugin-settings', (req) => service.getPluginSettingsInfo(req));
   handle('set-plugin-settings', (req) => service.setPluginSettings(req));

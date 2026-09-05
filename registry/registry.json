@@ -2,5 +2,39 @@
   "$schema": "./registry.schema.md",
   "name": "agent-base-plugin-registry",
   "version": 1,
-  "plugins": []
+  "plugins": [
+    {
+      "name": "system-master",
+      "version": "1.0.0",
+      "displayName": "全能系统管家",
+      "description": "全盘文件读写、桌面一键投放、PowerShell/CMD终端调度与硬件性能全景扫描",
+      "author": "何惜",
+      "permissions": [
+        "fs:read",
+        "fs:write",
+        "shell:exec"
+      ],
+      "downloadUrl": "https://github.com/noeticforge/noeticforge/releases/download/v0.5.2/system-master-1.0.0.zip",
+      "localPackage": "registry/packages/system-master-1.0.0.zip",
+      "sha256": "0b92b3507683667d11cd7146c3da3f5a3132c8b1c7373427469c9906b1536385",
+      "protocolVersion": 1,
+      "homepage": "https://github.com/noeticforge/noeticforge"
+    },
+    {
+      "name": "m3e-canvas",
+      "version": "1.0.0",
+      "displayName": "M3E Canvas 画布设计器",
+      "description": "Material 3 Expressive 可视化原型设计器，生成在线交互画板链接与 AI 提示词直接导出桌面",
+      "author": "何惜",
+      "permissions": [
+        "fs:read",
+        "fs:write"
+      ],
+      "downloadUrl": "https://github.com/noeticforge/noeticforge/releases/download/v0.5.2/m3e-canvas-1.0.0.zip",
+      "localPackage": "registry/packages/m3e-canvas-1.0.0.zip",
+      "sha256": "e2a2097addc98946242e57f98f862574c0c6af51b1fd9b2b48c66c14b59e2013",
+      "protocolVersion": 1,
+      "homepage": "https://github.com/noeticforge/noeticforge"
+    }
+  ]
 }

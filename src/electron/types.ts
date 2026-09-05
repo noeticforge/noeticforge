@@ -128,7 +128,7 @@ export const SYSTEM_PROMPT = `你是一个桌面端智能助手，可以通过�
 工具的执行结果会以 tool 消息返回给你。如果工具返回了错误，请如实告知用户，不要虚构结果。`;
 
 export const DEFAULT_REGISTRY_URL =
-  'https://raw.githubusercontent.com/agent-base/registry/main/registry.json';
+  'https://raw.githubusercontent.com/noeticforge/noeticforge/main/registry/registry.json';
 
 /** 应用版本（与 package.json 同源，避免双写漂移；源码与编译产物相对层级一致） */
 export const APP_VERSION: string = (() => {

@@ -90,7 +90,7 @@ function parseCompletionResponse(data: any): LLMResponse {
 /** 消费 SSE 流：text 增量即时回调，tool_calls 增量拼接后统一返回 */
 async function consumeSseStream(
   body: ReadableStream<Uint8Array>,
-  onChunk: (delta: string) => void,
+  onChunk: (delta: string, kind?: 'content' | 'thought') => void,
 ): Promise<LLMResponse> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
@@ -122,13 +122,13 @@ async function consumeSseStream(
       const delta = event.choices?.[0]?.delta;
       if (!delta) continue;
 
-      // 支持 DeepSeek-R1 / Qwen 等思维链流式字段 (reasoning_content)
+      // 支持 DeepSeek-R1 / Qwen 等思维链流式字段 (reasoning_content)，按 thought 分流
       const thought = delta.reasoning_content;
       if (typeof thought === 'string' && thought.length > 0) {
-        onChunk(thought);
+        onChunk(thought, 'thought');
       } else if (typeof delta.content === 'string' && delta.content.length > 0) {
         content += delta.content;
-        onChunk(delta.content);
+        onChunk(delta.content, 'content');
       }
       if (Array.isArray(delta.tool_calls)) {
         for (const tc of delta.tool_calls) {
