@@ -350,12 +350,14 @@ async function main(): Promise<void> {
     calls = 0;
     lastSystem: string | null = null;
     lastFirstUser: string | null = null;
+    firstUsers: (string | null)[] = [];
     private mock: MockProvider;
     constructor(responses: ConstructorParameters<typeof MockProvider>[0]) { this.mock = new MockProvider(responses); }
     async chat(messages: any[], tools: any, options: any) {
       this.calls += 1;
       this.lastSystem = messages[0]?.content ?? null;
       this.lastFirstUser = messages.find((m: any) => m.role === 'user')?.content ?? null;
+      this.firstUsers.push(this.lastFirstUser);
       return this.mock.chat(messages, tools, options);
     }
   }
@@ -364,10 +366,11 @@ async function main(): Promise<void> {
     { content: 'second-ok', toolCalls: [], finishReason: 'stop' },
     { content: '摘要：用户曾发送超长消息。', toolCalls: [], finishReason: 'stop' },
     { content: 'third-ok', toolCalls: [], finishReason: 'stop' },
+    { content: 'fourth-ok', toolCalls: [], finishReason: 'stop' },
   ]);
   const service6 = new AgentService({ appDir, pushEvent: push, initialProvider: cap as unknown as LLMProvider, contextTokenBudget: 3000, maxIterations: 5 });
   await service6.init();
-  await service6.createSession({ title: '压缩测试' }); // 干净会话，避免复用前面章节的历史
+  const sid6 = unwrap(await service6.createSession({ title: '压缩测试' })).session.id; // 干净会话，避免复用前面章节的历史
   const s6a = service6.sendMessage({ message: { role: 'user', content: 'A'.repeat(20_000) } });
   check(s6a.ok === true, '首条（超长）消息正常受理');
   const s6b = service6.sendMessage({ message: { role: 'user', content: '第二条消息' } });
@@ -387,10 +390,32 @@ async function main(): Promise<void> {
   check(cap.calls === 4, `模型调用 4 次（首条/次条/压缩摘要/第三条），实际 ${cap.calls}`);
   check((cap.lastSystem ?? '').includes('AGENTS 测试标记'), '系统提示包含项目 AGENTS.md 内容');
   check((cap.lastFirstUser ?? '').startsWith('【历史摘要】'), '第三轮触发上下文压缩（首轮超预算被摘要）');
+  check(
+    events.filter((e) => e.channel === 'context-compacted' && e.payload.sessionId === sid6).length === 1,
+    'context-compacted 恰好推送 1 次（仅增量重写时推送）',
+  );
+  // 第四条：无新整轮被丢弃 → 必须复用既有摘要（零摘要调用、前缀字节级稳定）
+  const summaryView = cap.firstUsers[3] ?? '';
+  const s6d = service6.sendMessage({ message: { role: 'user', content: '第四条消息' } });
+  check(s6d.ok === true, '第四条消息正常受理');
+  await waitFor(
+    () => events.some((e) => e.channel === 'loop-done' && e.payload.content === 'fourth-ok'),
+    10_000,
+    '第四条完成（复用既有摘要）',
+  );
+  check(cap.calls === 5, `第四轮复用摘要：模型调用仍只 5 次（无重复摘要调用），实际 ${cap.calls}`);
+  check(cap.lastFirstUser === summaryView && summaryView.startsWith('【历史摘要】'), '发给模型的前缀与上一轮逐字节一致（Prompt Cache 稳定）');
   const sess6 = unwrap(await service6.switchSession({ id: unwrap(service6.listSessions()).sessions[0].id })).session;
   check(
-    sess6.messages.length === 6 && (sess6.messages[0].content as string).length === 20_000,
+    sess6.messages.length === 8 && (sess6.messages[0].content as string).length === 20_000,
     '磁盘历史保持全量（压缩只影响发给模型的内容）',
+  );
+  const sess6Raw = JSON.parse(await readFile(path.join(appDir, 'sessions', `${sid6}.json`), 'utf-8')) as {
+    meta?: { compaction?: { upTo: number; summary: string } };
+  };
+  check(
+    sess6Raw.meta?.compaction?.upTo === 2 && !!sess6Raw.meta.compaction.summary,
+    '压缩记录持久化到会话 meta（upTo=2）',
   );
   await service6.shutdown();
 

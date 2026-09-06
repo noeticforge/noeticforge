@@ -211,9 +211,21 @@ export class AgentService {
     try {
       let inputHistory = session.messages;
       const est = inputHistory.reduce((sum, m) => sum + estimateMessageTokens(m) + 8, 0);
-      if (policy.contextTokenBudget > 0 && est > policy.contextTokenBudget) {
+      if (policy.summarize && policy.contextTokenBudget > 0 && est > policy.contextTokenBudget) {
         try {
-          inputHistory = await this.workspace.compressHistory(session.messages, provider);
+          const previous = session.meta?.compaction;
+          const compressed = await this.workspace.compressHistory(session.messages, provider, previous);
+          inputHistory = compressed.messages;
+          // 复用（record 与 meta 中同一引用）不重复落盘/推送；仅增量重写后更新记录并提示 UI
+          if (compressed.record && compressed.record !== previous) {
+            await this.sessions.updateMeta(sessionId, { compaction: compressed.record });
+            this.pushEvent('context-compacted', {
+              messageId: running.messageId,
+              sessionId,
+              coveredCount: compressed.record.upTo,
+              summary: compressed.record.summary,
+            });
+          }
         } catch {
           inputHistory = session.messages;
         }

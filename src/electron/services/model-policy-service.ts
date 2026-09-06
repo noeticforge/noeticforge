@@ -9,13 +9,15 @@ import type { AppInfo, IpcResult, PermissionMode } from '../types.js';
 
 export interface RuntimePolicy {
   provider: LLMProvider | null; maxIterations: number; contextTokenBudget: number;
+  /** 上下文摘要压缩开关（false = 超预算退回纯整轮截断，不调 LLM） */
+  summarize: boolean;
   permissionMode: PermissionMode; allowedPermissions?: Permission[]; forceApprovalPermissions?: Permission[];
   reasoningEffort?: 'low' | 'medium' | 'high'; models: string[]; currentModel: string | null; savedBaseUrl: string | null;
 }
 
 interface ModelPolicyOptions {
   appDir: string; initialProvider?: LLMProvider; maxIterations?: number;
-  contextTokenBudget?: number; allowedPermissions?: Permission[]; forceApprovalPermissions?: Permission[];
+  contextTokenBudget?: number; summarize?: boolean; allowedPermissions?: Permission[]; forceApprovalPermissions?: Permission[];
 }
 
 /**
@@ -27,6 +29,7 @@ export class ModelPolicyService {
   private provider: LLMProvider | null;
   private maxIterations: number;
   private contextTokenBudget: number;
+  private summarize: boolean;
   private readonly explicitBudget: boolean;
   private permissionMode: PermissionMode = 'full';
   private readonly manualPolicy: boolean;
@@ -43,6 +46,7 @@ export class ModelPolicyService {
     this.maxIterations = opts.maxIterations ?? 15;
     this.explicitBudget = typeof opts.contextTokenBudget === 'number';
     this.contextTokenBudget = opts.contextTokenBudget ?? 24_000;
+    this.summarize = opts.summarize ?? true;
     this.manualPolicy = opts.allowedPermissions !== undefined || opts.forceApprovalPermissions !== undefined;
     this.allowedPermissions = opts.allowedPermissions;
     this.forceApprovalPermissions = opts.forceApprovalPermissions;
@@ -73,6 +77,7 @@ export class ModelPolicyService {
       provider: this.provider,
       maxIterations: this.maxIterations,
       contextTokenBudget: this.contextTokenBudget,
+      summarize: this.summarize,
       permissionMode: this.permissionMode,
       allowedPermissions: this.allowedPermissions,
       forceApprovalPermissions: this.forceApprovalPermissions,
@@ -274,6 +279,7 @@ export class ModelPolicyService {
 
   private applyConfig(cfg: Record<string, unknown>): void {
     if (!this.explicitBudget && typeof cfg.contextTokenBudget === 'number' && cfg.contextTokenBudget > 0) this.contextTokenBudget = cfg.contextTokenBudget;
+    if (typeof cfg.summarize === 'boolean') this.summarize = cfg.summarize;
     if (typeof cfg.permissionMode === 'string' && PERMISSION_MODES.includes(cfg.permissionMode as PermissionMode)) {
       this.permissionMode = cfg.permissionMode as PermissionMode; this.applyPolicy();
     }

@@ -200,6 +200,14 @@ body.theme-dark #sidebar{background:rgba(10,13,26,.42)}
 .msg-block-assistant{user-select:text}
 .msg-gap{height:2px}
 
+/* 上下文压缩提示（v0.6）：轻量单行分隔，悬浮可见摘要全文 */
+.compact-notice{
+  width:fit-content;max-width:82%;margin:0 auto;padding:2px 12px;
+  font-size:11px;color:var(--txt-dim);text-align:center;cursor:default;
+  border:1px dashed var(--pill-border);border-radius:999px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+
 /* 工具活动行 */
 .tool-row{
   border:1px solid var(--sep);border-radius:var(--r-sm);background:var(--field-bg);

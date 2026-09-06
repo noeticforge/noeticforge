@@ -258,6 +258,18 @@ export function onLoopErr(p) {
   scrollBottom();
 }
 
+/** 上下文压缩提示（单行分隔；悬浮展示摘要全文） */
+export function onContextCompacted(p) {
+  logEvent('context-compacted', p);
+  if (!isCurrentSession(p)) return;
+  ensureMsgCol();
+  const row = h('div', 'compact-notice', `🗜 较早的 ${p.coveredCount} 条历史消息已压缩为摘要，完整记录不受影响`);
+  row.title = p.summary || '';
+  msgCol.appendChild(row);
+  msgCol.appendChild(h('div', 'msg-gap'));
+  scrollBottom();
+}
+
 /** 从会话消息数组重建扁平对话流 */
 export function renderHistory(messages) {
   resetChatView();

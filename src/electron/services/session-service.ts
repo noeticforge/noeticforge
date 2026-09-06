@@ -107,6 +107,10 @@ export class SessionService {
     await this.store.appendMessages(id, messages);
   }
 
+  async updateMeta(id: string, patch: Partial<NonNullable<Session['meta']>>): Promise<void> {
+    await this.store.updateMeta(id, patch);
+  }
+
   /** 首轮对话后自动起标题（假模型除外——不消费测试队列） */
   maybeAutoTitle(sessionId: string): void {
     const session = this.store.get(sessionId);

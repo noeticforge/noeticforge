@@ -4,6 +4,8 @@
   "model": "deepseek-chat",
   "baseUrl": "https://api.deepseek.com/v1",
   "reasoningEffort": "medium",
+  "contextTokenBudget": 24000,
+  "summarize": true,
   "autoUpdate": {
     "enabled": false
   }

@@ -60,6 +60,7 @@ const PUSH_CHANNELS = [
   'approval-required',
   'loop-done',
   'loop-error',
+  'context-compacted',
   'plugins-changed',
   'sessions-changed',
   'mcp-status-changed',

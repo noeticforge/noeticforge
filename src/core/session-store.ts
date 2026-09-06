@@ -11,13 +11,26 @@ import type { ChatMessage } from '../types.js';
  * 内存中持有全部会话的轻量索引 + 惰性加载消息体。
  */
 
+/**
+ * 上下文压缩记录（v0.6）：summary 覆盖完整历史的前 upTo 条消息。
+ * 完整历史 append-only（只追加尾部）保证 upTo 索引跨轮稳定；
+ * 摘要本身在复用期间字节级不变，保障发给模型的前缀 Prompt Cache 命中。
+ */
+export interface SessionCompaction {
+  /** 已被 summary 覆盖的历史消息条数（history 前 upTo 条） */
+  upTo: number;
+  /** 被丢弃旧轮的要点摘要 */
+  summary: string;
+  updatedAt: number;
+}
+
 export interface Session {
   id: string;
   title: string;
   createdAt: number;
   updatedAt: number;
   messages: ChatMessage[];
-  meta?: { provider?: string; model?: string };
+  meta?: { provider?: string; model?: string; compaction?: SessionCompaction };
 }
 
 export interface SessionMeta {
@@ -130,6 +143,15 @@ export class SessionStore {
     const session = this.sessions.get(id);
     if (!session) return;
     session.title = title.trim() || session.title;
+    session.updatedAt = Date.now();
+    await this.persist(session);
+  }
+
+  /** 合并更新会话 meta 并落盘（上下文压缩记录等） */
+  async updateMeta(id: string, patch: Partial<NonNullable<Session['meta']>>): Promise<void> {
+    const session = this.sessions.get(id);
+    if (!session) return;
+    session.meta = { ...session.meta, ...patch };
     session.updatedAt = Date.now();
     await this.persist(session);
   }

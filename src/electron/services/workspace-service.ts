@@ -5,6 +5,7 @@ import path from 'node:path';
 import type { ChatMessage, LLMProvider, MessageContent } from '../../types.js';
 import { contentToText } from '../../types.js';
 import { trimHistory } from '../../core/context.js';
+import type { SessionCompaction } from '../../core/session-store.js';
 import { SYSTEM_PROMPT, err, truncateText } from '../types.js';
 import type { IpcResult } from '../types.js';
 
@@ -116,19 +117,34 @@ export class WorkspaceService {
     }
   }
 
-  /** Context compression: summarize older turns while preserving recent turns. */
-  async compressHistory(history: ChatMessage[], provider: LLMProvider): Promise<ChatMessage[]> {
+  /**
+   * Context compression (v0.6 incremental): old turns dropped due to exceeding the budget are summarized into a summary.
+   * previous carries the last record from the session meta: when no new full turns are dropped, it is reused directly
+   * (zero LLM calls), and the summary remains byte-level stable to ensure a Prompt Cache hit; only when the
+   * drop boundary grows is it incrementally rewritten (old summary + newly dropped turns merged together and fed to the model).
+   */
+  async compressHistory(
+    history: ChatMessage[],
+    provider: LLMProvider,
+    previous?: SessionCompaction,
+  ): Promise<{ messages: ChatMessage[]; record?: SessionCompaction }> {
     const budget = this.getContextBudget();
     const keep = trimHistory(history, Math.max(budget / 2, 2000)).messages;
-    const keptSet = new Set(keep);
-    const older = history.filter((m) => !keptSet.has(m));
-    if (older.length === 0) return history;
-    const transcript = older
-      .map((m) => {
+    const boundary = history.length - keep.length;
+    if (boundary === 0) return { messages: history };
+    if (previous?.summary && boundary <= previous.upTo) {
+      return { messages: this.withSummaryHeader(previous.summary, keep), record: previous };
+    }
+    const dropped = history.slice(previous?.summary ? previous.upTo : 0, boundary);
+    const transcript = [
+      previous?.summary ? `此前摘要（请在更新版中合并保留）：\n${previous.summary}` : '',
+      ...dropped.map((m) => {
         const who = m.role === 'user' ? '用户' : m.role === 'assistant' ? '助手' : '工具';
         const tools = m.toolCalls?.length ? `（调用 ${m.toolCalls.map((c) => c.name).join(', ')}）` : '';
         return `${who}${tools}: ${truncateText(contentToText(m.content) || (m.toolCalls ? '工具调用' : ''), 400)}`;
-      })
+      }),
+    ]
+      .filter(Boolean)
       .join('\n');
     const res = await provider.chat(
       [{
@@ -139,6 +155,12 @@ export class WorkspaceService {
     );
     const summary = res.content.trim();
     if (!summary) throw new Error('摘要为空');
+    const record: SessionCompaction = { upTo: boundary, summary, updatedAt: Date.now() };
+    return { messages: this.withSummaryHeader(summary, keep), record };
+  }
+
+  /** 摘要对置于保留历史之前（头部注入，不插在历史中间） */
+  private withSummaryHeader(summary: string, keep: ChatMessage[]): ChatMessage[] {
     return [
       { role: 'user', content: `【历史摘要】以下是本次会话较早内容的要点：\n${summary}` },
       { role: 'assistant', content: '已了解以上背景，请继续。' },

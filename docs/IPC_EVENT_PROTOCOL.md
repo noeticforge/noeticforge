@@ -604,6 +604,17 @@ interface ProviderMeta { id: string; label: string; requiresBaseUrl: boolean; de
 | `install-plugin-from-registry` | `{ name: string; registryUrl?: string }` | `{ plugin: PluginInfo }`（下载 zip → sha256 校验 → 标准安装） |
 | `get-plugin-settings` | `{ name: string }` | `{ schema: object \| null; values: object \| null }`（schema 来自 manifest.settings） |
 | `set-plugin-settings` | `{ name: string; values: object }` | `null`（落盘 `<appDir>/plugins/settings/<name>.json`，下次工具执行注入 `ctx.settings`） |
+
+### 7.5 上下文压缩推送（v0.6）
+
+推送：`context-compacted` → `{ messageId: string; sessionId: string; coveredCount: number; summary: string }`
+
+- **触发时机**：会话历史超过 `contextTokenBudget`（估算）且被丢弃旧轮的数量增长（即需要重写摘要）时，主进程完成压缩后推送一次；**复用既有摘要（无新丢弃）不推送**；
+- `coveredCount`：摘要覆盖的历史消息条数（完整历史的前 `coveredCount` 条在发给模型时被摘要替代；**磁盘全量历史不变**）；
+- `summary`：摘要全文，UI 可通过 tooltip 展示；
+- UI 应以轻量单行分隔提示展示，不中断当前流式输出；
+- 开关：config.json `"summarize": false` 关闭摘要压缩（超预算退回纯整轮截断，永不推送本事件）。
+
 ---
 
 ## 8. v0.4 协议增补（策略 / 附件 / 终端 / 子代理）

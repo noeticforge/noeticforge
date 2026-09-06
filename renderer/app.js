@@ -13,7 +13,7 @@ import { logEvent, loadAudit, toggleRightPanel, startTerminal, onTermData } from
 import { openSettings, renderProviderDetail, modelChip, saveProvider, renderMcpPage, saveMcpJson, renderPluginsPage, handleInstall, applyTheme, handleFetchModels, onUpdaterState } from './modules/settings.js';
 import { setSessionChatHandlers, filteredSessions, renderSessions, loadSessions, doSwitchSession, newSession, onSessionsChanged } from './modules/session.js';
 import { onApproval, onApprove, onReject, onChoiceConfirm, onChoiceCancel } from './modules/approval.js';
-import { ensureMsgCol, onChunk, onToolStart, onToolResult, onLoopDone, onLoopErr, renderHistory, resetChatView } from './modules/chat.js';
+import { ensureMsgCol, onChunk, onToolStart, onToolResult, onLoopDone, onLoopErr, onContextCompacted, renderHistory, resetChatView } from './modules/chat.js';
 import { handleSend, maybeOpenAtPicker, pickAttachments, handleDropFiles } from './modules/composer.js';
 
 /* ================= 窗口控制 ================= */
@@ -42,6 +42,7 @@ function subscribe() {
   api.on('approval-required', onApproval);
   api.on('loop-done', onLoopDone);
   api.on('loop-error', onLoopErr);
+  api.on('context-compacted', onContextCompacted);
   api.on('plugins-changed', () => { if (!$('#settings-view').classList.contains('hidden')) renderPluginsPage(); });
   api.on('sessions-changed', onSessionsChanged);
   api.on('term-data', onTermData);
