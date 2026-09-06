@@ -123,6 +123,7 @@ export class ModelPolicyService {
       ? (cfg.models as unknown[]).filter((m): m is string => typeof m === 'string' && !!m.trim()).map((m) => m.trim())
       : undefined;
     const model = typeof cfg.model === 'string' && cfg.model.trim() ? cfg.model.trim() : models?.[0];
+    const enableReasoningEffort = cfg.enableReasoningEffort === true || existing.enableReasoningEffort === true;
     try {
       this.provider = createProvider({
         provider: providerId,
@@ -130,7 +131,7 @@ export class ModelPolicyService {
         model,
         baseUrl,
         maxTokens,
-        enableReasoningEffort: true,
+        enableReasoningEffort,
       });
     } catch (e) {
       return err('E_INVALID_CONFIG', `配置无效: ${e instanceof Error ? e.message : String(e)}`, 'llm');
@@ -152,7 +153,7 @@ export class ModelPolicyService {
       models: this.models.length ? this.models : undefined,
       baseUrl,
       maxTokens,
-      enableReasoningEffort: true,
+      enableReasoningEffort,
     };
     try {
       await writeFile(cfgPath, JSON.stringify(persist, null, 2), 'utf-8');

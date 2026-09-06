@@ -37,6 +37,8 @@ export interface ToolResult {
    * 也支持对象形式 { type, content }，content 为独立富渲染文本。
    */
   render?: string | { type: string; content: string };
+  /** 结构化附加数据（如 kb.archive 返回的 path/fullPath 等），非喂给模型的文本 */
+  data?: Record<string, unknown>;
 }
 
 export interface ToolContext {
@@ -45,6 +47,8 @@ export interface ToolContext {
   workingDir: string;
   /** 用户在设置页配置的值（结构由 manifest.settings 约定） */
   settings?: Record<string, unknown>;
+  /** 底座注入的宿主服务（如子代理委派 runSubagent） */
+  services?: Record<string, unknown>;
 }
 
 export interface AgentTool {

@@ -119,6 +119,8 @@ export interface ToolResult {
    * 也支持对象形式 { type, content }，content 为独立富渲染文本。
    */
   render?: string | { type: string; content: string };
+  /** 结构化附加数据（如 kb.archive 返回的 path/fullPath 等），非喂给模型的文本 */
+  data?: Record<string, unknown>;
 }
 
 /** 工具执行时由底座注入的上下文 */

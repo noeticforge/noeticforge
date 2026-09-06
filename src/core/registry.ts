@@ -17,7 +17,12 @@ export class ToolRegistry {
     if (this.plugins.has(plugin.manifest.name)) {
       throw new Error(`插件重复注册: ${plugin.manifest.name}`);
     }
+    const seen = new Set<string>();
     for (const tool of plugin.tools) {
+      if (seen.has(tool.name)) {
+        throw new Error(`插件 ${plugin.manifest.name} 内工具名重复: "${tool.name}"`);
+      }
+      seen.add(tool.name);
       if (this.tools.has(tool.name)) {
         throw new Error(
           `工具名冲突: "${tool.name}"（已被插件 ${this.tools.get(tool.name)!.manifest.name} 注册）`,

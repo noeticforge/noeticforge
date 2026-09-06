@@ -100,11 +100,7 @@ async function consumeSseStream(
   // tool_calls 在流里按 index 分片到达：id/name 先来，arguments 分多次传
   const toolCallAcc = new Map<number, { id: string; name: string; args: string }>();
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-
+  const drain = (): void => {
     let newlineIdx: number;
     while ((newlineIdx = buffer.indexOf('\n')) >= 0) {
       const line = buffer.slice(0, newlineIdx).trim();
@@ -144,7 +140,16 @@ async function consumeSseStream(
       if (reason === 'tool_calls') finishReason = 'tool_calls';
       else if (reason === 'length') finishReason = 'length';
     }
+  };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    drain();
   }
+  buffer += decoder.decode(); // flush 末尾可能残留的不完整多字节序列
+  drain(); // 处理无换行结尾的最后一段
 
   const toolCalls = [...toolCallAcc.entries()]
     .sort(([a], [b]) => a - b)

@@ -17,7 +17,7 @@ export const ERROR_CODES = {
   E_INTERNAL: '后端内部错误',
 
   // ---- Provider 配置 ----
-  E_PROVIDER_NOT_CONFIGURED: '尚未配置模型，请先填写 API Key',
+  E_PROVIDER_NOT_CONFIGURED: '尚未配置模型，请在「模型设置」中填写 API Key',
   E_PROVIDER_UNSUPPORTED: '不支持的模型提供商',
   E_INVALID_CONFIG: '配置无效，请检查 apiKey / model / baseUrl',
 

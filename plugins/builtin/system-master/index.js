@@ -156,7 +156,7 @@ const desktopCreateTool = {
 
   async execute(args) {
     try {
-      const fileName = String(args.fileName || 'desktop-output.txt').trim();
+      const fileName = path.basename(String(args.fileName || 'desktop-output.txt').trim()) || 'desktop-output.txt';
       const content = String(args.content ?? '');
       const desktopDir = getDesktopPath();
       const targetPath = path.join(desktopDir, fileName);
