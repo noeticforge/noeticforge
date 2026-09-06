@@ -19,8 +19,8 @@ npm run serve:vtx                    # 启动 http://127.0.0.1:8000/v1/embedding
 | 命令 | 测什么 | 需要 |
 |---|---|---|
 | `npm run smoke` | 循环引擎 + providers 多模态转换 + 严格网关兼容 + 终端后端 | 无（离线） |
-| `npm run test:unit` | vitest 单元测试 80 项（上下文裁剪/Schema/注册表/会话存储/Provider 流解析/知识库 kb） | 无（离线） |
-| `npm run test:ipc` | IPC 协议 89 项（含权限模式/排队/压缩/子代理/MCP/通道接线完整性） | 无（离线） |
+| `npm run test:unit` | vitest 单元测试 85 项（上下文裁剪/增量摘要压缩/Schema/注册表/会话存储/Provider 流解析/知识库 kb） | 无（离线） |
+| `npm run test:ipc` | IPC 协议 94 项断言（含权限模式/排队/压缩复用与前缀稳定/子代理/MCP/通道接线完整性） | 无（离线） |
 | `npm run test:window` | 窗口控制（最小化/最大化/关闭/状态推送） | 桌面环境（**CI 不跑此防线**，必须本地验证） |
 | `npm run check:codes` | 错误码三方一致（事实源=协议文档=UI 文案） | 无（离线） |
 
@@ -51,7 +51,7 @@ src/providers/registry.ts（模型注册表）    src/mcp/manager.ts（MCP 桥�
 
 1. **契约先行**：动 IPC 通道/事件/插件协议，先改 `docs/` 协议文档再动码（CONTRIBUTING 铁律 1）
 2. **`core/loop.ts` 不认识任何具体工具/模型/UI** —— 往里加业务 = 打回
-3. **新增 IPC 通道三件套缺一不可**：preload 声明 + main `handle()` + service 方法。`test:ipc` 的"通道接线完整性"检查会自动抓漏（当前 66 通道；历史教训：v0.4 曾漏注册导致对话全挂）
+3. **新增 IPC 通道三件套缺一不可**：preload 声明 + main `handle()` + service 方法。`test:ipc` 的"通道接线完整性"检查会自动抓漏（当前 72 通道；历史教训：v0.4 曾漏注册导致对话全挂）
 4. **错误码**只能出自 `src/shared/error-codes.ts`（check:codes 强制同步三方）
 5. 工具路径用 `ctx.workingDir`，禁 `process.cwd()`；插件必须 try/catch 返回 ToolResult
 
@@ -61,6 +61,7 @@ src/providers/registry.ts（模型注册表）    src/mcp/manager.ts（MCP 桥�
 - **终端**：非 PTY——交互式全屏程序（vim/top）不支持
 - **win32 窗口最大化**：透明无边框窗口原生 `maximize()` 失效，底座在 win32 用逻辑最大化（`setBounds(工作区)` + 手工维护状态，`win:state` 推送语义不变）。Win+方向键等系统级窗口操作与逻辑状态可能短暂不同步（见 `docs/CODE_REVIEW.md` F1）
 - **Anthropic + 推理力度**：带工具历史的请求自动不透传 thinking（API 协议限制，底座不存储 thinking 块）；首轮无工具历史时正常透传
+- **上下文摘要压缩（v0.6）**：超 `contextTokenBudget` 时被丢弃旧轮增量摘要留底，记录持久化于 `session.meta.compaction`（`upTo` 依赖历史 append-only——`replaceMessages` 只允许追加尾部，勿破坏该约定）；`summarize: false` 可关闭；完整历史永不改写，压缩只影响发给模型的内容
 - **reasoning_effort**：OpenAI 兼容端点需 config.json `"enableReasoningEffort": true` 才透传（严格网关兼容）；Anthropic 恒透传 thinking
 - **打包**：`npm run dist` 产出 release/win-unpacked；应用 cwd 即数据目录（config.json/sessions/audit.log 所在）
 - **测试注意**：journeys 依赖 18099/9226 端口，重跑前杀干净旧进程（`taskkill //F //IM electron.exe` + 按端口杀）**并清空 `journeys/sessions/`**（遗留会话会让 J8 的会话数断言失败）；`journeys/mcp.json` 被 gitignore，新机器需自行创建（`{"mcpServers":{"mock":{"command":"node","args":["../dist/scripts/mock-mcp-server.js"],"approval":"never"}}}`，相对路径从 journeys 目录解析）；mock 是无状态按内容路由的，改路由先想"工具结果回来后模型该怎么收尾"

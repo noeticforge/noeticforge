@@ -27,3 +27,6 @@ journeys/electron.log
 
 # 知识库插件：索引文件是本地构建产物
 知识库/.kb-index.json
+
+# AI 会话工具的本地工作产物
+.zcode/

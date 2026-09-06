@@ -86,6 +86,7 @@ npm run dist
 // 可选策略字段
 {
   "contextTokenBudget": 24000,          // 上下文 token 预算（估算），超限从最旧整轮截断
+  "summarize": true,                    // 摘要压缩开关（默认 true）：被丢弃旧轮增量摘要留底；false 退回纯截断
   "allowedPermissions": ["fs:read"],    // 运行时权限白名单（缺省全放行）
   "forceApprovalPermissions": ["fs:write"], // 命中即强制审批（覆盖插件声明）
   "pluginRegistryUrl": "https://…/registry.json" // 插件注册表索引
@@ -170,5 +171,6 @@ npm run serve:vtx    # 启动 http://127.0.0.1:8000/v1/embeddings
 - [x] 大文件模块化拆分（v0.5.0：agent-service/app.js 全部 ≤300 行领域模块）
 - [x] 本地知识库 kb 插件（v0.5.0：代码感知切块 + 关键词/向量双路检索，纯插件化）
 - [x] electron-builder 打包分发与自动更新（v0.5.0：electron-updater 已集成，默认关闭；发布侧动作见 docs/REFACTOR_REPORT.md §五.3）
+- [x] 上下文摘要压缩 v2（v0.6.0：增量摘要 + 会话 meta 持久化 + summarize 开关 + context-compacted 成本明示推送）
 - [ ] 插件受控执行 API（带权限校验的文件句柄）与 utilityProcess 进程池
 - [ ] 插件签名（minisign/Sigstore）与信任分级

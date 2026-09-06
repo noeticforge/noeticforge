@@ -245,6 +245,9 @@ interface Session {
 兜底：预算装不下任何一轮 → 只保留最近一轮 + 注入 system 提示"历史已截断，必要时请用户复述关键信息"
 摘要：config 开关 summarize: true 时，被丢弃的旧轮先经一次廉价调用压缩成一段注入（阶段3再做，成本要明示用户）
 ```
+> **✅ 已落地（v0.6.0）**：`summarize` 开关（默认 true）+ 增量摘要（仅丢弃边界增长时重写，否则零 LLM 调用复用）+
+> 摘要持久化于 `session.meta.compaction`（复用期字节级稳定，保障 Prompt Cache）+ `context-compacted` 推送明示成本。
+> 详见 `docs/CONTEXT_COMPACTION_REPORT.md`。
 
 ### 8.3 Provider 注册表
 ```ts
