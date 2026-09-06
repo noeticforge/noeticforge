@@ -112,3 +112,20 @@ export async function handleSend() {
   }
   if (r.data?.queued) markLastUserQueued();
 }
+
+/** 拖拽附件支持：用户把文件直接拖入输入框时自动解析为附件芯片 */
+export async function handleDropFiles(files) {
+  if (!files || !files.length) return;
+  const remaining = Math.max(0, 4 - st.attachments.length);
+  if (remaining <= 0) { toast('附件最多添加 4 个'); return; }
+  const list = Array.from(files).slice(0, remaining);
+  for (const f of list) {
+    const p = window.agentBase?.getPathForFile ? window.agentBase.getPathForFile(f) : f.path;
+    if (p) {
+      const rr = await invoke(window.agentBase.readAttachment({ path: p }), '读取附件');
+      if (rr.ok) st.attachments.push(rr.data);
+      if (st.attachments.length >= 4) break;
+    }
+  }
+  renderAttachChips();
+}

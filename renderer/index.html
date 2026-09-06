@@ -219,9 +219,16 @@
         <!-- 插件 -->
         <section class="set-page hidden" data-page="plugins">
           <h1>插件</h1>
-          <p class="set-desc">已安装插件与本地目录安装。协议与审批机制见 docs/PLUGIN_PROTOCOL.md。</p>
+          <p class="set-desc">已安装插件、官方插件市场一键获取与本地扩展安装。</p>
+          <div class="pd-label" style="margin-top:0">已安装插件</div>
           <div id="plugin-list-settings" class="plugin-list"></div>
-          <div id="plugin-empty-settings" class="side-placeholder hidden">暂无插件</div>
+          <div id="plugin-empty-settings" class="side-placeholder hidden">暂无已安装插件</div>
+
+          <div class="pd-label" style="margin-top:24px">🛒 官方精选插件市场 (Marketplace)</div>
+          <div id="market-list-settings" class="plugin-list"></div>
+          <div id="market-empty-settings" class="side-placeholder hidden">正在连接插件市场...</div>
+
+          <div class="pd-label" style="margin-top:24px">本地手动安装</div>
           <div class="install-row glass-card">
             <input id="plugin-dir" type="text" placeholder="插件目录绝对路径，如 D:\plugins\my-plugin">
             <button id="install-btn" class="btn-glass">安装</button>

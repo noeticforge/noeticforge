@@ -4,7 +4,7 @@
 愿景与路线图见 [`docs/DEVELOPMENT_PLAN.md`](docs/DEVELOPMENT_PLAN.md)；[贡献指南](CONTRIBUTING.md)。
 
 > 项目归属 [noeticforge](https://github.com/noeticforge) 组织 · 维护者 [@Ljj041120](https://github.com/Ljj041120) ·
-> 最新版本报告见 [`docs/V0.5.1_UPDATE_REPORT.md`](docs/V0.5.1_UPDATE_REPORT.md) · 重构报告见 [`docs/REFACTOR_REPORT.md`](docs/REFACTOR_REPORT.md)
+> 今晚全量更新交付报告见 [`docs/TONIGHT_ALL_UPDATES_REPORT.md`](docs/TONIGHT_ALL_UPDATES_REPORT.md) · 重构报告见 [`docs/REFACTOR_REPORT.md`](docs/REFACTOR_REPORT.md)
 
 ## 你拿到的是什么
 
@@ -31,7 +31,7 @@ src/
     └── preload.ts            contextBridge 暴露 window.agentBase（UI 唯一入口）
 
 renderer/                     桌面 UI（会话侧栏/流式聊天/Markdown/审批弹窗/插件与 MCP 管理/模型配置）
-plugins/builtin/              内置插件：read-file / write-file / shell-exec（命令执行，强制审批）/ web-fetch（网页抓取）/ kb（本地知识库检索）/ ask-user（AI 决策交互选择）/ system-master（全能系统管家，全盘读写/桌面直投/命令指挥）
+plugins/builtin/              内置插件：read-file / write-file / shell-exec（命令执行，强制审批）/ web-fetch（网页抓取）/ kb（本地知识库检索）/ ask-user（AI 决策交互选择）/ system-master（全能系统管家）/ m3e-canvas（M3E 画布原型设计器）
 plugins/user/                 用户插件安装位置        plugins/settings/ 插件设置值
 sdk/                          @agent-base/sdk：插件作者的类型与 definePlugin
 templates/plugin-basic/       插件模板（5 分钟出第一个插件）

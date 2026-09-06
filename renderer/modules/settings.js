@@ -100,12 +100,9 @@ export async function saveProvider() {
 export async function handleFetchModels() {
   const provider = $('#pd-models').dataset.provider;
   if (!provider) return;
-  const apiKey = $('#pd-apikey').value.trim();
-  const baseUrl = $('#pd-baseurl').value.trim();
+  const apiKey = $('#pd-apikey').value.trim(); const baseUrl = $('#pd-baseurl').value.trim();
   const btn = $('#pd-fetch-models');
-  btn.disabled = true;
-  const origText = btn.textContent;
-  btn.textContent = '⏳ 查询中...';
+  btn.disabled = true; const origText = btn.textContent; btn.textContent = '⏳ 查询中...';
   try {
     const r = await invoke(window.agentBase.fetchModels({ provider, apiKey, baseUrl }), '拉取远程模型');
     if (r.ok && Array.isArray(r.data?.models) && r.data.models.length) {
@@ -113,18 +110,11 @@ export async function handleFetchModels() {
       const existing = new Set([...container.querySelectorAll('.mc-name')].map((n) => n.textContent.trim()));
       let added = 0;
       for (const m of r.data.models) {
-        if (!existing.has(m)) {
-          container.appendChild(modelChip(m, container));
-          existing.add(m);
-          added++;
-        }
+        if (!existing.has(m)) { container.appendChild(modelChip(m, container)); existing.add(m); added++; }
       }
       toast(`成功拉取 ${r.data.models.length} 个模型（新增 ${added} 个）`, 'ok');
     }
-  } finally {
-    btn.disabled = false;
-    btn.textContent = origText;
-  }
+  } finally { btn.disabled = false; btn.textContent = origText; }
 }
 
 export async function renderMcpPage() {
@@ -160,8 +150,43 @@ export async function saveMcpJson() {
 
 export async function renderPluginsPage() {
   const r = await invoke(window.agentBase.listPlugins(), '加载插件列表');
-  if (!r.ok) return;
-  renderPluginList(r.data.plugins, $('#plugin-list-settings'), $('#plugin-empty-settings'));
+  if (r.ok) renderPluginList(r.data.plugins, $('#plugin-list-settings'), $('#plugin-empty-settings'));
+  await renderMarketplace(r.ok ? r.data.plugins : []);
+}
+
+export async function renderMarketplace(installedPlugins) {
+  const mList = $('#market-list-settings'); const mEmpty = $('#market-empty-settings');
+  if (!mList || !mEmpty) return;
+  mList.innerHTML = ''; mEmpty.classList.remove('hidden'); mEmpty.textContent = '正在获取官方插件市场...';
+  const installedSet = new Set((installedPlugins || []).map((p) => p.name));
+  const r = await invoke(window.agentBase.listRegistryPlugins(), '获取市场插件');
+  const market = (r.ok && Array.isArray(r.data?.plugins)) ? r.data.plugins : [];
+  mEmpty.classList.toggle('hidden', market.length > 0);
+  if (!market.length) { mEmpty.textContent = '暂无可用市场插件'; return; }
+  for (const item of market) {
+    const isInstalled = installedSet.has(item.name);
+    const row = h('div', 'plugin-item'); const head = h('div', 'plugin-head'); const info = h('div', 'plugin-info');
+    info.append(h('span', 'plugin-name', item.displayName || item.name), h('span', 'plugin-version', 'v' + (item.version || '1.0.0')));
+    if (item.author) info.appendChild(h('span', 'tag tag-tool', `作者: ${item.author}`));
+    const btn = h('button', isInstalled ? 'btn-uninstall' : 'btn-glass btn-mini', isInstalled ? '已安装 (点此卸载)' : '📥 一键安装');
+    head.append(info, btn);
+    const tags = h('div', 'plugin-tags');
+    (item.permissions || []).forEach((x) => tags.appendChild(h('span', 'tag tag-perm', x)));
+    row.append(head, h('div', 'plugin-desc', item.description || ''), tags);
+    mList.appendChild(row);
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      if (isInstalled) {
+        if (!confirm(`确定卸载插件「${item.displayName || item.name}」？`)) { btn.disabled = false; return; }
+        const un = await invoke(window.agentBase.uninstallPlugin({ name: item.name }), '卸载插件');
+        if (un.ok) { toast(`已卸载 ${item.displayName || item.name}`, 'ok'); renderPluginsPage(); }
+      } else {
+        const inst = await invoke(window.agentBase.installPluginFromRegistry({ name: item.name }), '从市场安装');
+        if (inst.ok) { toast(`🎉 成功安装「${item.displayName || item.name}」！`, 'ok'); renderPluginsPage(); }
+      }
+      btn.disabled = false;
+    });
+  }
 }
 
 export function renderPluginList(plugins, listEl, emptyEl) {
@@ -218,21 +243,15 @@ export async function renderGeneralPage() {
   const kv = $('#general-info');
   kv.innerHTML = '';
   const rows = [
-    ['版本', 'v' + info.version],
-    ['工作目录', info.appDir],
-    ['权限模式', POLICY_LABEL[info.permissionMode]],
+    ['版本', 'v' + info.version], ['工作目录', info.appDir], ['权限模式', POLICY_LABEL[info.permissionMode]],
     ['当前模型', info.provider ? `${info.provider} · ${info.models[0] || '默认'}` : '未配置'],
-    ['会话数', String(info.sessionCount)],
-    ['插件数', String(info.pluginCount)],
-    ['MCP 已连接', String(info.mcpCount)],
+    ['会话数', String(info.sessionCount)], ['插件数', String(info.pluginCount)], ['MCP 已连接', String(info.mcpCount)],
   ];
   for (const [k, v] of rows) {
     const row = h('div', 'kv-row');
     row.append(h('span', 'kv-key', k), h('span', 'kv-val', v));
     kv.appendChild(row);
   }
-
-  // 渲染自动更新控制与状态
   if (window.agentBase?.getUpdaterState) {
     const r = await invoke(window.agentBase.getUpdaterState(), '查询更新状态');
     if (r.ok && r.data) onUpdaterState(r.data);
@@ -250,39 +269,25 @@ export function onUpdaterState(state) {
   const prgWrap = $('#update-progress-wrap');
   const prgBar = $('#update-progress-bar');
   const prgTxt = $('#update-progress-txt');
-
-  const statusText = {
-    disabled: '已关闭', idle: '就绪', checking: '正在检查...',
-    available: '发现新版本', 'not-available': '已是最新版',
-    downloading: '下载中...', downloaded: '下载完成', error: '更新出错'
-  };
+  const statusText = { disabled: '已关闭', idle: '就绪', checking: '正在检查...', available: '发现新版本', 'not-available': '已是最新版', downloading: '下载中...', downloaded: '下载完成', error: '更新出错' };
   if (tag) tag.textContent = statusText[state.status] || state.status;
-
   if (state.status === 'available') {
     banner?.classList.remove('hidden');
     $('#update-new-ver').textContent = 'v' + (state.version || '');
     $('#update-notes').textContent = state.releaseNotes || '包含常规改进与稳定性修复。';
-    dlBtn?.classList.remove('hidden');
-    instBtn?.classList.add('hidden');
-    prgWrap?.classList.add('hidden');
+    dlBtn?.classList.remove('hidden'); instBtn?.classList.add('hidden'); prgWrap?.classList.add('hidden');
   } else if (state.status === 'downloading') {
-    banner?.classList.remove('hidden');
-    dlBtn?.classList.add('hidden');
-    prgWrap?.classList.remove('hidden');
+    banner?.classList.remove('hidden'); dlBtn?.classList.add('hidden'); prgWrap?.classList.remove('hidden');
     const p = Math.max(0, Math.min(100, state.percent || 0));
     if (prgBar) prgBar.style.width = p + '%';
     if (prgTxt) prgTxt.textContent = p + '%';
   } else if (state.status === 'downloaded') {
-    banner?.classList.remove('hidden');
-    dlBtn?.classList.add('hidden');
-    prgWrap?.classList.add('hidden');
-    instBtn?.classList.remove('hidden');
+    banner?.classList.remove('hidden'); dlBtn?.classList.add('hidden'); prgWrap?.classList.add('hidden'); instBtn?.classList.remove('hidden');
   } else if (state.status === 'not-available' || state.status === 'disabled') {
     banner?.classList.add('hidden');
   } else if (state.status === 'error' && state.error) {
     banner?.classList.remove('hidden');
     $('#update-notes').textContent = '检查失败: ' + state.error;
-    dlBtn?.classList.add('hidden');
-    instBtn?.classList.add('hidden');
+    dlBtn?.classList.add('hidden'); instBtn?.classList.add('hidden');
   }
 }

@@ -36,48 +36,68 @@ export function addUserBlock(content, opts = {}) {
   return block;
 }
 /** 助手正文块（流式追加；loop-done 后转 Markdown） */
+const thoughtCapsules = new Map();
+function ensureThoughtCapsule(messageId) {
+  ensureMsgCol();
+  let tc = thoughtCapsules.get(messageId);
+  if (!tc || !tc.capsule.isConnected) {
+    const capsule = h('div', 'thought-capsule thinking'), head = h('div', 'thought-header');
+    const brain = h('span', 'thought-brain', '🧠'), title = h('span', 'thought-title', 'AI 深度思考中…'), arr = h('span', 'thought-arrow', '▾');
+    head.append(brain, title, arr);
+    const body = h('div', 'thought-body'); capsule.append(head, body);
+    head.addEventListener('click', () => capsule.classList.toggle('expanded'));
+    const t0 = Date.now();
+    const timer = setInterval(() => {
+      if (capsule.classList.contains('thinking')) title.textContent = `AI 深度思考中 · ${Math.max(1, Math.round((Date.now() - t0) / 1000))} 秒…`;
+    }, 500);
+    msgCol.appendChild(capsule); scrollBottom();
+    tc = { capsule, body, title, t0, timer }; thoughtCapsules.set(messageId, tc);
+  }
+  return tc;
+}
+function finalizeThought(messageId) {
+  const tc = thoughtCapsules.get(messageId);
+  if (tc && tc.capsule.classList.contains('thinking')) {
+    clearInterval(tc.timer); tc.capsule.classList.remove('thinking');
+    tc.title.textContent = `已完成深度思考（耗时 ${Math.max(1, Math.round((Date.now() - tc.t0) / 1000))} 秒）`;
+  }
+}
 function ensureAssistantBlock(messageId) {
   ensureMsgCol();
   if (st.currentMessageId !== messageId || !st.currentAssistant || !st.currentAssistant.isConnected) {
+    finalizeThought(messageId);
     st.currentMessageId = messageId;
     st.currentAssistant = h('div', 'msg-block-assistant');
     st.currentAssistant.appendChild(h('div', 'stream-content'));
-    msgCol.appendChild(st.currentAssistant);
-    msgCol.appendChild(h('div', 'msg-gap'));
+    msgCol.appendChild(st.currentAssistant); msgCol.appendChild(h('div', 'msg-gap'));
   }
   return st.currentAssistant.firstChild;
 }
 /** 工具活动行（扁平内联） */
 function addToolRow(toolCallId, name, args) {
   ensureMsgCol();
-  const row = h('div', 'tool-row pending');
-  const head = h('div', 'tool-row-head');
+  const row = h('div', 'tool-row pending'), head = h('div', 'tool-row-head');
   const ico = h('span', 't-ico', '◌'), nm = h('span', 't-name', name), sum = h('span', 't-summary', argsSummary(args)), dur = h('span', 't-dur', '');
   head.append(ico, nm, sum, dur); row.appendChild(head);
-  const out = h('div', 'tool-row-output hidden');
-  row.appendChild(out); msgCol.appendChild(row); msgCol.appendChild(h('div', 'msg-gap'));
+  const out = h('div', 'tool-row-output hidden'); row.appendChild(out); msgCol.appendChild(row); msgCol.appendChild(h('div', 'msg-gap'));
   st.tools.set(toolCallId, { row, ico, dur, out, sum, name, t0: Date.now(), output: '', ok: null });
   row.addEventListener('click', () => {
     if (!out.textContent && st.tools.get(toolCallId)) {
-      out.textContent = '';
-      out.appendChild(h('pre', null, trunc(st.tools.get(toolCallId).output || '（无输出）', 4000)));
+      out.textContent = ''; out.appendChild(h('pre', null, trunc(st.tools.get(toolCallId).output || '（无输出）', 4000)));
     }
     out.classList.toggle('hidden'); scrollBottom();
   });
-  scrollBottom();
-  return row;
+  scrollBottom(); return row;
 }
 function finishToolRow(toolCallId, result) {
   const t = st.tools.get(toolCallId);
   if (!t) return;
   t.ok = !!result.ok; const ms = Date.now() - t.t0;
-  t.row.classList.remove('pending');
-  t.row.classList.add(t.ok ? 'tool-row-ok' : 'tool-row-fail');
-  t.ico.textContent = t.ok ? '✓' : '✗';
-  t.dur.textContent = (ms / 1000).toFixed(1) + 's';
+  t.row.classList.remove('pending'); t.row.classList.add(t.ok ? 'tool-row-ok' : 'tool-row-fail');
+  t.ico.textContent = t.ok ? '✓' : '✗'; t.dur.textContent = (ms / 1000).toFixed(1) + 's';
   if (!t.ok && result.error) t.sum.textContent += ' · ' + result.error;
   t.output = result.output || '';
-  if (typeof marked !== 'undefined') {
+if (typeof marked !== 'undefined') {
     const renderType = typeof result.render === 'object' ? result.render?.type : result.render;
     const renderText = typeof result.render === 'object' ? result.render?.content : t.output;
     if (renderType === 'markdown' && renderText) {
@@ -87,69 +107,46 @@ function finishToolRow(toolCallId, result) {
   }
   scrollBottom();
 }
-/** 思考行：等待模型响应的耗时（实时秒表） */
+/** 思考行与进程卡 */
 export function startThink() {
-  stopThink();
-  st.thinkT0 = Date.now();
-  el.thinking.classList.remove('hidden'); el.thinking.classList.add('live');
-  const tick = () => {
-    el.thinkingText.textContent = '思考 · ' + ((Date.now() - st.thinkT0) / 1000).toFixed(0) + ' 秒';
-    st.thinkTimer = setTimeout(tick, 500);
-  };
+  stopThink(); st.thinkT0 = Date.now(); el.thinking.classList.remove('hidden'); el.thinking.classList.add('live');
+  const tick = () => { el.thinkingText.textContent = '思考 · ' + ((Date.now() - st.thinkT0) / 1000).toFixed(0) + ' 秒'; st.thinkTimer = setTimeout(tick, 500); };
   tick();
 }
 export function stopThink(final) {
   if (st.thinkTimer) { clearTimeout(st.thinkTimer); st.thinkTimer = null; }
-  el.thinking.classList.remove('live');
-  if (final === false) { el.thinking.classList.add('hidden'); return; }
+  el.thinking.classList.remove('live'); if (final === false) el.thinking.classList.add('hidden');
 }
 function freezeThink() {
   if (st.thinkTimer) {
-    clearTimeout(st.thinkTimer); st.thinkTimer = null;
-    el.thinking.classList.remove('live');
+    clearTimeout(st.thinkTimer); st.thinkTimer = null; el.thinking.classList.remove('live');
     el.thinkingText.textContent = '思考 · 持续了 ' + ((Date.now() - st.thinkT0) / 1000).toFixed(0) + ' 秒';
   }
 }
-export function setBusy(busy) {
-  st.busy = busy;
-  // 发送按钮保持可用：忙碌时发送 = 排队（后端 queued）
-  el.input.placeholder = busy ? '循环进行中，继续输入将自动排队…' : '输入消息，Enter 发送，Shift+Enter 换行；@ 引用文件';
+export function setBusy(busy, sessionId) {
+  const sid = sessionId || st.currentSessionId;
+  if (sid) { if (busy) st.busySessions.add(sid); else st.busySessions.delete(sid); }
+  st.busy = st.currentSessionId ? st.busySessions.has(st.currentSessionId) : busy;
+  el.input.placeholder = st.busy ? '当前会话进行中，继续输入将排队…' : '输入消息，Enter 发送，Shift+Enter 换行；@ 引用文件';
 }
-/* ================= 进程卡 ================= */
 export function showStatusCard() {
-  st.scT0 = Date.now();
-  st.scToolCount = 0;
-  st.scDone = 0;
-  el.scItems.innerHTML = '';
-  el.scCount.textContent = '0/0';
+  st.scT0 = Date.now(); st.scToolCount = 0; st.scDone = 0; el.scItems.innerHTML = ''; el.scCount.textContent = '0/0';
   el.statusCard.classList.remove('hidden');
-  const tick = () => {
-    el.scElapsed.textContent = '已运行 ' + ((Date.now() - st.scT0) / 1000).toFixed(0) + ' 秒';
-    st.scTimer = setTimeout(tick, 500);
-  };
+  const tick = () => { el.scElapsed.textContent = '已运行 ' + ((Date.now() - st.scT0) / 1000).toFixed(0) + ' 秒'; st.scTimer = setTimeout(tick, 500); };
   tick();
 }
 function scAddTool(name, toolCallId) {
-  st.scToolCount += 1;
-  el.scCount.textContent = st.scDone + '/' + st.scToolCount;
-  const item = h('div', 'sc-item run');
-  item.appendChild(h('span', 's-ico', '◌'));
-  item.appendChild(h('span', 's-lbl', name));
-  el.scItems.appendChild(item);
-  while (el.scItems.children.length > 6) el.scItems.firstChild.remove();
-  item.dataset.tcid = toolCallId; // 按 toolCallId 精确配对（内外层同名工具不互串）
-  return item;
+  st.scToolCount += 1; el.scCount.textContent = st.scDone + '/' + st.scToolCount;
+  const item = h('div', 'sc-item run'); item.append(h('span', 's-ico', '◌'), h('span', 's-lbl', name));
+  el.scItems.appendChild(item); while (el.scItems.children.length > 6) el.scItems.firstChild.remove();
+  item.dataset.tcid = toolCallId; return item;
 }
 function scDoneTool(toolCallId, ok) {
-  st.scDone += 1;
-  el.scCount.textContent = st.scDone + '/' + st.scToolCount;
+  st.scDone += 1; el.scCount.textContent = st.scDone + '/' + st.scToolCount;
   const items = [...el.scItems.children];
   for (let i = items.length - 1; i >= 0; i--) {
     if (items[i].dataset.tcid === toolCallId && items[i].classList.contains('run')) {
-      items[i].classList.remove('run');
-      items[i].classList.add('done');
-      items[i].querySelector('.s-ico').textContent = ok ? '✓' : '✗';
-      break;
+      items[i].classList.remove('run'); items[i].classList.add('done'); items[i].querySelector('.s-ico').textContent = ok ? '✓' : '✗'; break;
     }
   }
 }
@@ -157,14 +154,10 @@ export function hideStatusCard() {
   if (st.scTimer) { clearTimeout(st.scTimer); st.scTimer = null; }
   el.statusCard.classList.add('hidden');
 }
-function isCurrentSession(p) {
-  return !st.currentSessionId || !p.sessionId || p.sessionId === st.currentSessionId;
-}
+function isCurrentSession(p) { return !st.currentSessionId || !p.sessionId || p.sessionId === st.currentSessionId; }
 export function markLastUserQueued() {
-  if (!msgCol) return;
-  const blocks = msgCol.querySelectorAll('.msg-block-user');
-  const last = blocks[blocks.length - 1];
-  if (last && !last.querySelector('.queued-badge')) last.appendChild(h('span', 'queued-badge', '已排队'));
+  if (!msgCol) return; const blocks = msgCol.querySelectorAll('.msg-block-user');
+  const last = blocks[blocks.length - 1]; if (last && !last.querySelector('.queued-badge')) last.appendChild(h('span', 'queued-badge', '已排队'));
 }
 let pendingChunkText = '';
 let chunkRafId = null;
@@ -180,6 +173,13 @@ function flushChunk(msgId) {
 export function onChunk(p) {
   if (!isCurrentSession(p) || !p.delta) return;
   freezeThink();
+  if (p.kind === 'thought') {
+    const tc = ensureThoughtCapsule(p.messageId);
+    tc.body.textContent += p.delta;
+    scrollBottom();
+    return;
+  }
+  finalizeThought(p.messageId);
   pendingChunkText += p.delta;
   if (!chunkRafId) {
     chunkRafId = requestAnimationFrame(() => flushChunk(p.messageId));
@@ -229,9 +229,9 @@ export function onToolResult(p) {
 export function onLoopDone(p) {
   flushChunk(p.messageId);
   logEvent('loop-done', p);
+  setBusy(false, p.sessionId);
   if (!isCurrentSession(p)) return;
   freezeThink();
-  setBusy(false);
   const block = st.currentMessageId === p.messageId ? st.currentAssistant : null;
   const contentEl = block ? block.firstChild : null;
   if (contentEl && p.content && !contentEl.textContent) contentEl.textContent = p.content;
@@ -243,10 +243,10 @@ export function onLoopDone(p) {
 export function onLoopErr(p) {
   flushChunk(p.messageId);
   logEvent('loop-error', p);
+  setBusy(false, p.sessionId);
   if (!isCurrentSession(p)) return;
   freezeThink();
   hideStatusCard();
-  setBusy(false);
   const e = p.error || {};
   ensureMsgCol();
   const row = h('div', 'tool-row tool-row-fail');
@@ -289,5 +289,6 @@ export function renderHistory(messages) {
 }
 export function resetChatView() {
   el.messages.innerHTML = ''; ensureMsgCol(); st.tools.clear();
+  thoughtCapsules.forEach((tc) => clearInterval(tc.timer)); thoughtCapsules.clear();
   st.currentAssistant = null; st.currentMessageId = null; stopThink(); hideStatusCard();
 }

@@ -221,12 +221,112 @@ body.theme-dark #sidebar{background:rgba(10,13,26,.42)}
 }
 .tool-row .md-out{margin-top:6px}
 
-/* 思考行 */
+/* 思考行（输入框顶部）与 消息流独立思考胶囊 */
 .think-row{
   display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--txt-dim);padding:2px 0;
 }
 .think-ico{width:16px;text-align:center;color:var(--txt-faint)}
 .think-row.live .think-ico{animation:pulse 1.1s infinite;color:var(--accent)}
+
+/* ================= 流光液态玻璃「AI 深度思考胶囊」 ================= */
+.thought-capsule {
+  margin: 4px 0 10px 0;
+  border-radius: 14px;
+  background: rgba(90, 130, 255, 0.04);
+  border: 1px solid rgba(130, 160, 255, 0.22);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  overflow: hidden;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, background 0.25s ease;
+  user-select: none;
+}
+.thought-capsule:hover {
+  background: rgba(90, 130, 255, 0.08);
+  border-color: rgba(140, 175, 255, 0.45);
+}
+/* 思考中的流光炫彩动效 (Aurora Shimmer) */
+.thought-capsule.thinking {
+  border-color: transparent;
+  background-image: linear-gradient(rgba(245, 248, 255, 0.82), rgba(245, 248, 255, 0.82)),
+                    radial-gradient(circle at top left, #6366f1, #a855f7, #3b82f6, #06b6d4);
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+  box-shadow: 0 0 18px rgba(99, 102, 241, 0.2), 0 2px 8px rgba(0, 0, 0, 0.04);
+  animation: aurora-glow 4s ease-in-out infinite alternate;
+}
+body.theme-dark .thought-capsule.thinking {
+  background-image: linear-gradient(rgba(13, 17, 30, 0.88), rgba(13, 17, 30, 0.88)),
+                    radial-gradient(circle at top left, #6366f1, #a855f7, #3b82f6, #06b6d4);
+  box-shadow: 0 0 22px rgba(168, 85, 247, 0.25), 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+@keyframes aurora-glow {
+  0% { filter: drop-shadow(0 0 4px rgba(99, 102, 241, 0.35)); }
+  50% { filter: drop-shadow(0 0 10px rgba(168, 85, 247, 0.45)); }
+  100% { filter: drop-shadow(0 0 6px rgba(6, 182, 212, 0.35)); }
+}
+
+.thought-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 13px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 550;
+  color: var(--txt-dim);
+  transition: color 0.15s ease;
+}
+.thought-header:hover {
+  color: var(--txt);
+}
+.thought-brain {
+  font-size: 13px;
+  display: inline-block;
+  color: var(--accent);
+  transition: transform 0.2s ease;
+}
+.thought-capsule.thinking .thought-brain {
+  animation: pulse-brain 1.4s infinite ease-in-out;
+}
+@keyframes pulse-brain {
+  0%, 100% { transform: scale(1); opacity: 0.85; }
+  50% { transform: scale(1.18); opacity: 1; filter: drop-shadow(0 0 6px var(--accent)); }
+}
+.thought-title {
+  flex: 1;
+  letter-spacing: 0.02em;
+}
+.thought-arrow {
+  font-size: 10px;
+  color: var(--txt-faint);
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.thought-capsule.expanded .thought-arrow {
+  transform: rotate(90deg);
+  color: var(--accent);
+}
+.thought-body {
+  display: none;
+  padding: 10px 14px 12px 14px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--txt-dim);
+  background: rgba(0, 0, 0, 0.03);
+  border-top: 1px solid var(--sep);
+  max-height: 280px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+}
+body.theme-dark .thought-body {
+  background: rgba(0, 0, 0, 0.22);
+}
+.thought-capsule.expanded .thought-body {
+  display: block;
+}
 
 /* 悬浮进程卡 */
 #status-card{
@@ -250,7 +350,8 @@ body.theme-dark #sidebar{background:rgba(10,13,26,.42)}
 
 /* 底部富输入框 */
 #composer{flex:0 0 auto;padding:6px 36px 16px;max-width:912px;width:100%;margin:0 auto}
-.composer-card{border-radius:18px;padding:10px 12px 9px}
+.composer-card{border-radius:18px;padding:10px 12px 9px;transition:border-color .18s, box-shadow .18s}
+.composer-card.drag-over{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent), 0 8px 32px rgba(90,130,255,.25);background:var(--active)}
 #message-input{
   width:100%;resize:none;border:none;background:transparent;outline:none;
   font-family:inherit;font-size:14px;line-height:1.55;max-height:180px;color:var(--txt);

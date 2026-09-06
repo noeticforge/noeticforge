@@ -73,8 +73,8 @@ export interface LLMResponse {
 /** LLM 单次调用的可选项：中断信号 + 流式增量回调 */
 export interface ChatOptions {
   signal?: AbortSignal;
-  /** 流式输出：provider 每产出一小段文本就回调一次；非流式 provider 在结束时回调一次全文 */
-  onChunk?: (delta: string) => void;
+  /** 流式输出：provider 每产出一小段文本就回调一次；支持按 kind 分流真实正文 (content) 与思考过程 (thought) */
+  onChunk?: (delta: string, kind?: 'content' | 'thought') => void;
   /** 推理力度：provider 按自身协议透传（OpenAI 兼容 → reasoning_effort；Anthropic → thinking 预算） */
   reasoningEffort?: 'low' | 'medium' | 'high';
 }
@@ -182,8 +182,8 @@ export type ApprovalResolution =
 export interface LoopOptions {
   maxIterations: number;
   onEvent: (event: LoopEvent) => void;
-  /** 流式输出回调（透传给 provider） */
-  onChunk?: (delta: string) => void;
+  /** 流式输出回调（透传给 provider，支持区分正文与思维链） */
+  onChunk?: (delta: string, kind?: 'content' | 'thought') => void;
   /** 中断信号：abort 后循环在最近的检查点终止 */
   signal?: AbortSignal;
   /** 审批钩子：返回 'rejected' 时工具不执行，拒绝信息喂回模型 */
