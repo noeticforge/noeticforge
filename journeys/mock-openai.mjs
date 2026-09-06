@@ -9,9 +9,14 @@ const server = http.createServer((req, res) => {
   let body = '';
   req.on('data', (d) => (body += d));
   req.on('end', () => {
-    writeFileSync(new URL('./last-request.json', import.meta.url), body);
+    // 自动起标题请求是后台噪音，不写入捕获文件——否则会在下一轮读探针前覆盖
+    // 正在被断言的请求（v0.5.7 起默认会话每轮循环都会触发一次起标题调用）。
     let parsed = {};
     try { parsed = JSON.parse(body || '{}'); } catch { /* 忽略 */ }
+    const preMessages = parsed.messages ?? [];
+    const preLastUser = [...preMessages].reverse().find((m) => m.role === 'user');
+    const isTitleCall = typeof preLastUser?.content === 'string' && preLastUser.content.includes('会话标题');
+    if (!isTitleCall) writeFileSync(new URL('./last-request.json', import.meta.url), body);
     const messages = parsed.messages ?? [];
     const toolResults = messages.filter((m) => m.role === 'tool');
     const lastTool = [...toolResults].pop();
@@ -27,6 +32,10 @@ const server = http.createServer((req, res) => {
       reply = { type: 'text', text: 'SUB-FINAL: 子代理任务完成' };
     } else if (toolAfterLastUser) {
       reply = { type: 'text', text: 'TOOL-FINAL: ' + String(lastTool.content).slice(0, 60) };
+    } else if (userText.includes('会话标题')) {
+      // 自动起标题 prompt（内嵌用户首句，可能误命中下方关键词路由）→ 恒定返回原会话名。
+      // v0.5.7 起默认会话也会被自动起标题；恒定回复使其不改名，J8 的「默认会话」断言保持有效。
+      reply = { type: 'text', text: '默认会话' };
     } else if (userText.includes('委派')) {
       reply = { type: 'tool', id: 'j-sub', name: 'subagent.run', args: '{"task":"生成一句问候语"}' };
     } else if (userText.includes('读取')) {
