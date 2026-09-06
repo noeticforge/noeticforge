@@ -2,6 +2,33 @@
 
 > 给下一位开发者：这份文档让你在 30 分钟内掌握"怎么跑、怎么测、哪里不能碰"。
 > 深度背景见 `docs/DEVELOPMENT_PLAN.md`（战略路线）与两份协议文档（接口契约）。
+>
+> **🤖 AI 代理进场第一读**：任何 AI 编码代理接入本项目，**先完整读本文件再动代码**——
+> §〇 是最近一次交付快照，§四 铁律与 §五 已知边界是硬约束；读完按 §二 跑一遍防线验证环境。（规则同样写入根目录 `AGENTS.md` §0）
+
+## 〇、最新一轮交付快照（v0.6.0，2026-09-06，Ljj041120 / ZCode 协作）
+
+**主线：上下文摘要压缩 v2**（完整设计与验证数据见 `docs/CONTEXT_COMPACTION_REPORT.md`）：
+
+- 超预算旧轮摘要**做一次就留底**：持久化于 `session.meta.compaction`（`{upTo, summary, updatedAt}`），
+  复用期间零 LLM 调用；仅"丢弃边界增长"时增量重写（旧摘要并入新摘要，上下文不丢）；
+- 复用期发给模型的前缀**逐字节稳定**（Prompt Cache 命中，IPC 自测有逐字节断言）；
+  磁盘历史保持全量契约不变；`core/loop.ts` 零改动；
+- `summarize` 开关（config.json，默认 true，false 退回纯截断）+ `context-compacted` 推送（协议 §7.5）+ UI 单行提示；
+- 注意边界：`meta.compaction.upTo` 依赖历史 append-only（`replaceMessages` 只许追加尾部，见 §五）。
+
+**验证与发布状态**：本地七项防线全绿（build / typecheck / smoke 24 / unit **85** / ipc **94 断言·72 通道** / codes / window）；
+journeys E2E 16 段 **23/23 全绿**；代码审查未发现新缺陷。已推送 main 并发布 **GitHub Release v0.6.0**（9 资产，正式版）。
+
+**本轮顺带修的既有问题**：journeys harness 适配 v0.5.7 自动起标题——v0.5.7 修 `isUntitled` 后默认会话每轮被起标题，
+mock 兜底回显把会话改成乱码名（J8 失配）、后台标题请求覆盖 J11 的请求捕获文件；journeys 自 v0.5.0 时代后无人重跑故未暴露，
+**非 v0.6.0 引入**。修法：mock 对标题请求恒回「默认会话」且不写 `last-request.json`（详见 `journeys/mock-openai.mjs` 注释与 journeys/README）。
+
+**下一轮建议（对账自 DEVELOPMENT_PLAN，2026-09-06 已全文档勾选对账）**：
+① `live:check` 真模型联测（最老欠案，需真实 API Key，顺带观察真实模型下摘要质量）；
+② 主进程 `uncaughtException` 崩溃日志落盘（MVP 验收项，半小时级）；
+③ 生态最后一公里：SDK 发 npm / `npm create` 脚手架 / 文档站——M3 门槛「3 个外部插件」是唯一未达标核心验收；
+④ 插件沙箱（utilityProcess）与签名排 v1.0（等有外部插件再动）。
 
 ## 一、30 秒跑起来
 
