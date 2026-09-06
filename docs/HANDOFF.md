@@ -92,3 +92,31 @@ src/providers/registry.ts（模型注册表）    src/mcp/manager.ts（MCP 桥�
 - **reasoning_effort**：OpenAI 兼容端点需 config.json `"enableReasoningEffort": true` 才透传（严格网关兼容）；Anthropic 恒透传 thinking
 - **打包**：`npm run dist` 产出 release/win-unpacked；应用 cwd 即数据目录（config.json/sessions/audit.log 所在）
 - **测试注意**：journeys 依赖 18099/9226 端口，重跑前杀干净旧进程（`taskkill //F //IM electron.exe` + 按端口杀）**并清空 `journeys/sessions/`**（遗留会话会让 J8 的会话数断言失败）；`journeys/mcp.json` 被 gitignore，新机器需自行创建（`{"mcpServers":{"mock":{"command":"node","args":["../dist/scripts/mock-mcp-server.js"],"approval":"never"}}}`，相对路径从 journeys 目录解析）；mock 是无状态按内容路由的，改路由先想"工具结果回来后模型该怎么收尾"
+
+## 六、历史沿革与 v0.5.0 交接存档（原根目录 `handoff.md` 合并入此，2026-09-06）
+
+> 以下为 2026-08-30 一次性交接文档的存档（原文自述"读完即可删除"，已合并至此并删除源文件）。
+> 部分状态自当时已演进，演进点以 **（→ 现状）** 标注。
+
+### 沿革
+
+- 项目从原开发者的压缩包（xmh.zip）提取，**原开发者署名匿名**（git 历史 `agent-base <dev@agent-base.local>`，交付文档即"何惜"），git 历史完整保留；
+- 项目归属 **noeticforge** 组织，维护者 [@Ljj041120](https://github.com/Ljj041120)；v0.5.0 起新提交以 Ljj041120 身份署名；
+- 三轮开发定版 v0.5.0：**维护轮**（全量代码审查 + 8 项 bug 修复 + vitest 单测层，见 `docs/CODE_REVIEW.md`）→ **模块化拆分轮**（PR #1，agent-service/app.js 全部 ≤300 行 + electron-updater 自动更新默认关 + CI 窗口自测 + J16，见 `docs/REFACTOR_REPORT.md`）→ **知识库轮**（kb 插件，零底座改动）。
+
+### kb 插件要点（知识库轮）
+
+- 完全插件化（`plugins/builtin/kb`），底座零改动：`kb.search`（检索）/ `kb.reindex`（强制重建）/ `kb.archive`（对话要点沉淀至 `知识库/会话归档/`，自动刷新索引立即可查）；
+- 代码感知切块：.ts/.js/.py 按**函数/类/装饰器语法边界**（纯 JS 零原生依赖），文档按标题/段落；
+- 双路检索：关键词（中文子串）+ 向量（OpenAI 兼容 `/v1/embeddings`，默认预设 **VTXAI/vtx-embed-7M**，`npm run serve:vtx` 一键本地启动 8000 端口）RRF 融合；**embedding 不在线自动降级纯关键词，检索永不断供**；
+- 设置项（插件设置页）：kbDir / chunking / embedEnabled / embedBaseUrl / embedModel；索引 `知识库/.kb-index.json` 自动失效重建。
+
+### 维护轮修复 F1~F8（细节见 `docs/CODE_REVIEW.md`）
+
+F1 win32 透明无边框窗口原生 maximize 静默失效 → 逻辑最大化；F2 mcp.json `enabled:false` 的 server 运行中启用永不连接；F3 损坏插件 zip 击穿"handler 永不 throw"契约；F4 Anthropic thinking + 工具历史第二轮必 400 → 自动降级不透传；F5 纯空白消息绕过校验；F6 "当前模型"从未存储；F7 自动起标题覆盖手动改名；F8 Windows 停终端不杀子进程树 → `taskkill /T /F`。
+
+### 仓库现状备忘（2026-08-30 快照）
+
+- 远端 **https://github.com/noeticforge/noeticforge**（私有）；git 身份 `user.name=Ljj041120`（新提交自动归属维护者）；
+- **网络环境备忘**：本机访问 GitHub API（api.github.com）直连易超时，走本地代理 `http://127.0.0.1:7897`（Clash 混合端口）；git push 主站通道不受影响；
+- **（→ 现状）**"test:window 不在 CI"已过时：v0.5.x 起 CI test job 已含 Windows 窗口自测；journeys E2E 仍需本地手跑（2026-09-06 已全绿验证一轮，见 §〇）。
