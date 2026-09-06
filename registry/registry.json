@@ -16,7 +16,7 @@
       ],
       "downloadUrl": "https://github.com/noeticforge/noeticforge/releases/download/v0.5.2/system-master-1.0.0.zip",
       "localPackage": "registry/packages/system-master-1.0.0.zip",
-      "sha256": "0b92b3507683667d11cd7146c3da3f5a3132c8b1c7373427469c9906b1536385",
+      "sha256": "d1303f6b2c75b2466a8823e2ad44af8117c22c01c46e81788ad2b264ed25b77d",
       "protocolVersion": 1,
       "homepage": "https://github.com/noeticforge/noeticforge"
     },
