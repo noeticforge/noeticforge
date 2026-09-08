@@ -2,6 +2,33 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。所有对外行为变化（IPC 通道、事件 payload、插件协议、错误码）都必须记录在此。
 
+## [0.7.1] - 2026-09-08（发布流水线竞态修复 + 私有仓库更新失败可行动提示，1535273240sch-droid）
+
+### 发布流水线：消除三平台并发抢建 Release 的竞态
+- **根因**：`release.yml` 的矩阵任务各自执行 `electron-builder --publish always`，三个 OS job
+  并发对同一 tag 建 Release。撞上竞态就会把产物**拆进两条同 tag 的 Release**——v0.5.8 与 v0.7.0
+  都中过：主安装包困在 `draft=Y` 的那条里，而 GitHub 因标签被重复项占用**拒绝解除 draft**
+  （`422 already_exists`），`latest.yml` / `latest-mac.yml` / `latest-linux.yml` 也被分散，自动更新随之失效。
+- **改法**：矩阵任务改为 `--publish never` 只构建 + `upload-artifact`；新增单一 `publish` job
+  汇总三平台产物，用 `softprops/action-gh-release` 建**一条** Release（`draft: false`、
+  `make_latest: true`、`fail_on_unmatched_files: true`）。
+- `publish` 仅在 tag 推送时执行；`workflow_dispatch` 退化为「只验证构建、不发布」。
+
+### 发布说明自动生成（此前每条 Release 说明都是空的）
+- 新增 `scripts/release-notes.mjs`：从 `CHANGELOG.md` 抽出当前版本小节，加上四平台下载表，
+  生成 `RELEASE_NOTES.md` 作为 Release 正文。历史 12 条 Release 里只有 2 条有说明，且都是手工补的。
+
+### 自动更新：私有仓库缺凭据时不再抛裸 404
+- 打包产物 `app-update.yml` 为 `provider: github` + `private: true`，运行时必须有
+  `GH_TOKEN` / `GITHUB_TOKEN`；缺失时 electron-updater 只会抛一个看不懂的 404，用户无从下手。
+- `UpdateManager.checkUpdates()` 现在**先探测**该情形（`missingPrivateRepoTokenHint`），命中则
+  提前失败并给出可行动说明（设置具备仓库读取权限的 PAT 后重启，或把 Releases 设为公开），
+  **一次网络请求都不发**；公开仓库、已有凭据、非 github provider 一律不打扰。
+
+### 验证
+- 单测 124 → **129 全绿**（`updater` 12 → 17，覆盖私有/公开/有 token/非 github/提前拦截五条路径）；
+  `tsc` 无错；冒烟 23 项、IPC 自测全过。
+
 ## [0.7.0] - 2026-09-08（子代理角色化编排 + 并发调度 + 网络韧性，1535273240sch-droid）
 
 ### 子代理：从「同一个模型跑同样的活」升级为「按角色分工」
