@@ -109,16 +109,7 @@ export async function runLoop(input: RunLoopInput): Promise<RunLoopResult> {
         return { content: response.content, iterations, history };
       }
 
-      for (const call of response.toolCalls) {
-        const result = await executeToolCall(call, registry, options, workingDir);
-        const toolMsg: ChatMessage = {
-          role: 'tool',
-          content: result.output,
-          toolCallId: call.id,
-        };
-        messages.push(toolMsg);
-        history.push(toolMsg);
-      }
+      await runToolCalls(response.toolCalls, registry, options, workingDir, messages, history);
     }
     throw new AgentLoopError('E_MAX_ITERATIONS', `已达到最大迭代次数 ${options.maxIterations}，循环强制终止`);
   } catch (err) {
@@ -132,12 +123,84 @@ export async function runLoop(input: RunLoopInput): Promise<RunLoopResult> {
   }
 }
 
-async function executeToolCall(
-  call: ToolCall,
+/** 并发批次默认上限：再高容易打爆网关配额，收益也递减 */
+const DEFAULT_MAX_PARALLEL = 4;
+
+/** 未注册的工具按串行处理——并发跑一个不存在的工具没意义，交给 executeToolCall 报 tool-not-found */
+function isParallelSafe(call: ToolCall, registry: ToolRegistry): boolean {
+  return registry.getTool(call.name)?.tool.parallelSafe === true;
+}
+
+/**
+ * 执行本轮全部工具调用。
+ *
+ * 顺序语义：非 parallelSafe 的调用逐个串行执行并充当屏障；连续的 parallelSafe 调用
+ * 聚成一个并发批次，受 maxParallelToolCalls 限流。
+ *
+ * tool 消息一律按【原始调用顺序】回填：provider 要求 tool 消息与 assistant 的 tool_calls
+ * 一一对应，所以完成顺序绝不能影响消息数组顺序。
+ */
+async function runToolCalls(
+  calls: ToolCall[],
   registry: ToolRegistry,
   options: LoopOptions,
   workingDir: string,
-): Promise<ToolResult> {
+  messages: ChatMessage[],
+  history: ChatMessage[],
+): Promise<void> {
+  const limit = Math.max(1, Math.floor(options.maxParallelToolCalls ?? DEFAULT_MAX_PARALLEL));
+  const push = (call: ToolCall, result: ToolResult): void => {
+    const toolMsg: ChatMessage = { role: 'tool', content: result.output, toolCallId: call.id };
+    messages.push(toolMsg);
+    history.push(toolMsg);
+  };
+
+  let i = 0;
+  while (i < calls.length) {
+    if (!isParallelSafe(calls[i], registry)) {
+      push(calls[i], await executeToolCall(calls[i], registry, options, workingDir));
+      i++;
+      continue;
+    }
+    const batch: ToolCall[] = [];
+    while (i < calls.length && isParallelSafe(calls[i], registry)) {
+      batch.push(calls[i]);
+      i++;
+    }
+    const results = await runBatch(batch, Math.min(limit, batch.length), registry, options, workingDir);
+    batch.forEach((call, idx) => push(call, results[idx]));
+  }
+}
+
+/** 固定数量 worker 抢任务位；结果按索引落位，与调用顺序严格一致 */
+async function runBatch(
+  batch: ToolCall[],
+  limit: number,
+  registry: ToolRegistry,
+  options: LoopOptions,
+  workingDir: string,
+): Promise<ToolResult[]> {
+  const results = new Array<ToolResult>(batch.length);
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    for (;;) {
+      const idx = next++;
+      if (idx >= batch.length) return;
+      try {
+        results[idx] = await executeToolCall(batch[idx], registry, options, workingDir);
+      } catch (err) {
+        // executeToolCall 已兜住插件异常；走到这里说明底座自身出了岔子。
+        // 但一个调用不许拖垮同批次，也不许留下空洞结果（否则消息数组顺序就废了）
+        const message = err instanceof Error ? err.message : String(err);
+        results[idx] = { ok: false, output: `工具执行异常: ${message}`, error: 'tool-crashed' };
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.max(1, limit) }, () => worker()));
+  return results;
+}
+
+async function executeToolCall(call: ToolCall, registry: ToolRegistry, options: LoopOptions, workingDir: string): Promise<ToolResult> {
   const entry = registry.getTool(call.name);
   if (!entry) {
     const result: ToolResult = {

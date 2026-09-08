@@ -58,6 +58,7 @@ export class AgentService {
       getAbortSignal: (sid) => this.running.get(sid)?.abort.signal,
       workingDir: this.appDir,
       onLoopEvent: (sid, mid, e) => this.onLoopEvent(sid, mid, e),
+      getSubagentSettings: () => this.policy.getSubagentSettings(),
     });
   }
   async init(): Promise<void> {
@@ -245,6 +246,7 @@ export class AgentService {
           allowedPermissions: policy.allowedPermissions,
           forceApprovalPermissions: policy.forceApprovalPermissions,
           reasoningEffort: policy.reasoningEffort,
+          maxParallelToolCalls: policy.maxParallelToolCalls,
           pluginSettings: (name) => this.plugins.getPluginSettings(name),
           ctxExtras: () => ({ services: { runSubagent: (args: Record<string, unknown>) => this.subagents.runSubagent(args, sessionId, running.messageId) } }),
           onChunk: (delta, kind) => {

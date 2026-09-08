@@ -6,6 +6,36 @@
   "reasoningEffort": "medium",
   "contextTokenBudget": 24000,
   "summarize": true,
+  "maxParallelToolCalls": 4,
+  "retry": {
+    "attempts": 3,
+    "baseDelayMs": 600
+  },
+  "subagents": {
+    "defaultRole": "worker",
+    "roles": {
+      "worker": {
+        "displayName": "杂活",
+        "purpose": "机械性、可验证的子任务：转换格式、批量处理、按明确规范生成",
+        "model": "deepseek-chat"
+      },
+      "researcher": {
+        "displayName": "研究员",
+        "purpose": "检索与汇总，只收集不下判断",
+        "model": "deepseek-chat",
+        "tools": ["read-file.*", "web-fetch.*"],
+        "maxIterations": 10,
+        "reasoningEffort": "low"
+      },
+      "reviewer": {
+        "displayName": "审校",
+        "purpose": "复核其它子代理的结论，找漏洞",
+        "model": "deepseek-reasoner",
+        "tools": ["read-file.*"],
+        "systemPrompt": "你是审校，只读不改，任务是找出结论里的错误与遗漏。"
+      }
+    }
+  },
   "autoUpdate": {
     "enabled": false
   }

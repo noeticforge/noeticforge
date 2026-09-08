@@ -145,6 +145,12 @@ export interface AgentTool {
   permissions: Permission[];
   /** 为 true 时执行前需要用户批准（审批钩子） */
   requiresApproval?: boolean;
+  /**
+   * 为 true 时，该工具可与【同一轮内连续声明】的其它 parallelSafe 调用并发执行。
+   * 缺省 false = 严格串行。只有「只读或无共享状态、并发执行不会互相踩踏」的工具才该声明；
+   * 写文件、执行命令这类有副作用的工具必须保持 false。底座按声明调度，不认识具体工具。
+   */
+  parallelSafe?: boolean;
   execute(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult>;
 }
 
@@ -202,4 +208,9 @@ export interface LoopOptions {
   reasoningEffort?: 'low' | 'medium' | 'high';
   /** 追加到 ToolContext 的宿主服务（如 subagent.run 的委派入口） */
   ctxExtras?: () => Partial<ToolContext> | undefined;
+  /**
+   * 并发批次内同时执行的最大工具调用数（默认 4，<1 视为 1）。
+   * 只对声明了 parallelSafe 的连续调用生效，串行调用不受影响。
+   */
+  maxParallelToolCalls?: number;
 }

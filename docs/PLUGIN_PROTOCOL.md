@@ -106,6 +106,7 @@ interface AgentTool {
   parameters: JSONSchema;    // OpenAI 风格 JSON Schema
   permissions: Permission[];
   requiresApproval?: boolean; // 若为 true，执行前必须先经过用户批准（审批钩子，默认 false）
+  parallelSafe?: boolean;     // 若为 true，可与同轮内连续的其它 parallelSafe 调用并发执行（默认 false = 串行）
   execute(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult>;
 }
 
@@ -125,6 +126,7 @@ interface ToolResult {
 | `parameters` | OpenAI 风格 JSON Schema，只接受 `type: "object"` 包裹、以 `properties` + `required` 描述参数。模型按此生成 `arguments`。 |
 | `permissions` | 本工具实际用到的权限，必须**是该插件 manifest.permissions 的子集**，否则插件校验失败。 |
 | `requiresApproval` | 可选，默认 `false`。为 `true` 时该工具**执行前必须先经过用户批准**（审批钩子，机制见 §4.3）；缺省则直接执行，除非工具权限命中底座的 `forceApprovalPermissions` 强制审批列表。 |
+| `parallelSafe` | 可选，默认 `false`。为 `true` 时该工具可与**同一轮内连续声明**的其它 `parallelSafe` 调用并发执行（调度语义见 §3.7）。只有「只读或无共享状态、并发执行不会互相踩踏」的工具才该声明；写文件、执行命令这类有副作用的工具必须保持 `false`。 |
 | `execute(args, ctx)` | 真正的执行函数。约定见 §3.5。 |
 
 ### 3.3 ToolContext（执行上下文）
@@ -157,6 +159,14 @@ interface ToolContext {
 | `'permission-denied'` | 工具权限被运行时权限策略（allowedPermissions 白名单）拒绝（工具不执行、不推送 tool-started） |
 | `'invalid-arguments'` | 参数未通过 JSON Schema 校验（模型生成或审批时用户修改后的参数都不例外） |
 | `'tool-crashed'` | 插件 execute 抛异常被底座兜底捕获 |
+
+**底座内置 `core-subagent` 的自定义 error 值**（v0.7 起，插件可依赖其语义做重试决策）：
+
+| 值 | 触发场景 |
+|---|---|
+| `'subagent-failed'` | 子代理内层循环抛异常（含迭代预算耗尽、模型调用失败） |
+| `'subagent-empty'` | 子代理跑完但零输出——判为失败，避免主代理把「没结果」误读成「已查完」 |
+| 自定义文案 | `role` 指向未配置的角色时，返回 `未知角色 "x"。可用角色：…` 让模型自行改派 |
 
 > `ToolResult` **不包含任何审批字段**。工具是否需要审批完全由 `AgentTool.requiresApproval` 声明、或其权限是否命中底座的 `forceApprovalPermissions` 强制审批列表决定（见 §4.3），工具自身不感知审批流程。
 
@@ -248,6 +258,36 @@ npx tsc -p read-file/tsconfig.json     # 产物输出到 read-file/dist/
 ```
 
 > `export default plugin` 是**硬约定**：主进程加载插件时只看默认导出。命名导出请勿使用。
+
+### 3.7 并发调度（`parallelSafe`）
+
+默认情况下，一轮里的多个 `tool_calls` **严格按模型给出的顺序逐个串行执行**。工具可通过 `parallelSafe: true` 声明自己可以被并发跑，底座据此调度——**底座不认识任何具体工具，只看声明**。
+
+**调度语义**：
+
+```
+调用序列:  A(串行)  B(并发)  C(并发)  D(串行)  E(并发)
+执行计划:  A ──→ [ B ∥ C ] ──→ D ──→ [ E ]
+```
+
+- 非 `parallelSafe` 的调用逐个执行，并充当**屏障**：它前后的并发调用不会跨过它重叠。
+- **连续**的 `parallelSafe` 调用聚成一个并发批次；被串行调用隔开的两组并发调用分属不同批次，顺序执行。
+- 批次内同时在跑的数量受 `LoopOptions.maxParallelToolCalls` 限制（`config.json` 的 `maxParallelToolCalls` 可配，取值夹在 1–16，缺省 4）。
+
+**四条不变量**（都有单测覆盖，见 `tests/loop-parallel.test.ts`）：
+
+1. **顺序回填**：`tool` 消息一律按**原始调用顺序**写入消息数组，与完成顺序无关。provider 要求 `tool` 消息与 assistant 的 `tool_calls` 一一对应，完成顺序绝不能污染它。
+2. **异常隔离**：同批次里某个工具抛异常，只让它自己拿到 `error: 'tool-crashed'`，不影响其它调用完成，也不打乱消息顺序。
+3. **审批可并发**：审批挂起按 `messageId:toolCallId` 分键，多个工具同时请求审批互不干扰；但用户会同时看到多个审批框，请谨慎给需要审批的工具标 `parallelSafe`。
+4. **事件交错**：`tool-started` / `tool-result` 会交错到达，二者都携带 `call`，UI 必须按 `toolCallId` 归因（渲染层已如此实现）。
+
+**声明纪律**：`parallelSafe` 是插件对底座的**承诺**，不是优化开关。只有满足以下全部条件才应声明为 `true`：
+
+- 只读，或写入的是**本次调用独占**的资源（例如各自独立上下文的子代理）；
+- 不依赖也不修改任何跨调用的共享可变状态（模块级变量、同一文件的并发写入、同一端口的服务）；
+- 与其它并发调用同时跑不会触发限流、锁竞争或数据踩踏。
+
+底座内置的 `subagent.run` / `subagent.roles` 已声明为 `parallelSafe`：子代理各自拥有独立上下文与独立循环，天然互不干扰，这也是本机制最主要的收益来源。反之，`write-file.write`、`shell-exec.run` 这类有副作用的工具必须保持串行。
 
 ---
 
@@ -523,6 +563,7 @@ interface AgentTool {
   parameters: JSONSchema;
   permissions: Permission[];
   requiresApproval?: boolean;   // 审批钩子：true 时执行前须用户批准
+  parallelSafe?: boolean;       // true 时可与同轮内连续的其它 parallelSafe 调用并发执行（见 §3.7）
   execute(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult>;
 }
 

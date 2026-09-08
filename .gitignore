@@ -2,6 +2,7 @@ node_modules/
 dist/
 release/
 config.json
+config.e2e.json
 mcp.json
 sessions/
 audit.log

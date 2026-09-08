@@ -4,6 +4,7 @@ import path from 'node:path';
 import type { LLMProvider, Permission } from '../../types.js';
 import { createProvider, type ProviderConfig } from '../../providers/provider.js';
 import { listProviderMetas } from '../../providers/registry.js';
+import { EMPTY_SETTINGS, parseSubagentSettings, type SubagentSettings } from './subagent-roles.js';
 import { APP_VERSION, PERMISSION_MODES, POLICY_PRESETS, err } from '../types.js';
 import type { AppInfo, IpcResult, PermissionMode } from '../types.js';
 
@@ -13,11 +14,35 @@ export interface RuntimePolicy {
   summarize: boolean;
   permissionMode: PermissionMode; allowedPermissions?: Permission[]; forceApprovalPermissions?: Permission[];
   reasoningEffort?: 'low' | 'medium' | 'high'; models: string[]; currentModel: string | null; savedBaseUrl: string | null;
+  /** parallelSafe 工具的并发上限（config.json 可选，缺省由循环引擎取 4） */
+  maxParallelToolCalls?: number;
 }
 
 interface ModelPolicyOptions {
   appDir: string; initialProvider?: LLMProvider; maxIterations?: number;
   contextTokenBudget?: number; summarize?: boolean; allowedPermissions?: Permission[]; forceApprovalPermissions?: Permission[];
+}
+
+/** config.json → ProviderConfig：只取有值的字段，避免 undefined 覆盖掉注册表里的默认模型 */
+function toProviderConfig(cfg: Record<string, unknown>): ProviderConfig {
+  const out: ProviderConfig = {
+    provider: typeof cfg.provider === 'string' && cfg.provider.trim() ? cfg.provider.trim() : 'openai-compatible',
+  };
+  if (typeof cfg.apiKey === 'string' && cfg.apiKey.trim()) out.apiKey = cfg.apiKey.trim();
+  if (typeof cfg.model === 'string' && cfg.model.trim()) out.model = cfg.model.trim();
+  if (typeof cfg.baseUrl === 'string' && cfg.baseUrl.trim()) out.baseUrl = cfg.baseUrl.trim();
+  if (typeof cfg.maxTokens === 'number' && Number.isFinite(cfg.maxTokens)) out.maxTokens = cfg.maxTokens;
+  if (typeof cfg.enableReasoningEffort === 'boolean') out.enableReasoningEffort = cfg.enableReasoningEffort;
+  // 重试策略也要带进「角色继承用的主配置」，否则子代理 provider 会拿默认值，
+  // 用户设的 attempts: 1（关闭重试）只在主 agent 那一侧生效
+  if (cfg.retry && typeof cfg.retry === 'object') {
+    const r = cfg.retry as Record<string, unknown>;
+    out.retry = {
+      ...(typeof r.attempts === 'number' && Number.isFinite(r.attempts) ? { attempts: Math.max(1, Math.floor(r.attempts)) } : {}),
+      ...(typeof r.baseDelayMs === 'number' && Number.isFinite(r.baseDelayMs) ? { baseDelayMs: Math.max(0, Math.floor(r.baseDelayMs)) } : {}),
+    };
+  }
+  return out;
 }
 
 /**
@@ -39,6 +64,10 @@ export class ModelPolicyService {
   private currentModel: string | null = null;
   private savedBaseUrl: string | null = null;
   private reasoningEffort: 'low' | 'medium' | 'high' | undefined;
+  /** 主 provider 的原始配置：子代理角色按字段继承它（换模型只写 model 即可） */
+  private baseProviderConfig: ProviderConfig | null = null;
+  private subagentSettings: SubagentSettings = EMPTY_SETTINGS;
+  private maxParallelToolCalls: number | undefined;
 
   constructor(opts: ModelPolicyOptions) {
     this.appDir = opts.appDir;
@@ -69,7 +98,19 @@ export class ModelPolicyService {
         // Incomplete config is treated as "not configured".
       }
     }
+    this.baseProviderConfig = toProviderConfig(cfg);
     this.applyConfig(cfg);
+    this.refreshSubagents(cfg);
+  }
+
+  /** 子代理角色表（含继承用的主配置）；未配置 subagents 时返回空表 */
+  getSubagentSettings(): SubagentSettings {
+    return this.subagentSettings;
+  }
+
+  /** 每次主配置变化都要重算：角色未声明的字段来自主配置，主模型换了角色的缺省值也跟着变 */
+  private refreshSubagents(cfg: Record<string, unknown>): void {
+    this.subagentSettings = parseSubagentSettings(cfg.subagents, this.baseProviderConfig ?? EMPTY_SETTINGS.base);
   }
 
   getRuntimeState(): RuntimePolicy {
@@ -85,6 +126,7 @@ export class ModelPolicyService {
       models: this.models,
       currentModel: this.currentModel,
       savedBaseUrl: this.savedBaseUrl,
+      maxParallelToolCalls: this.maxParallelToolCalls,
     };
   }
 
@@ -129,18 +171,17 @@ export class ModelPolicyService {
       : undefined;
     const model = typeof cfg.model === 'string' && cfg.model.trim() ? cfg.model.trim() : models?.[0];
     const enableReasoningEffort = cfg.enableReasoningEffort === true || existing.enableReasoningEffort === true;
+    const nextBase: ProviderConfig = { provider: providerId, apiKey, model, baseUrl, maxTokens, enableReasoningEffort };
+    // UI 里换模型会重写配置；retry 不在表单里，得从旧配置继承下来，否则换一次模型重试策略就丢了
+    const merged = { ...existing, ...cfg } as Record<string, unknown>;
+    const retryCfg = toProviderConfig(merged).retry;
+    if (retryCfg) nextBase.retry = retryCfg;
     try {
-      this.provider = createProvider({
-        provider: providerId,
-        apiKey,
-        model,
-        baseUrl,
-        maxTokens,
-        enableReasoningEffort,
-      });
+      this.provider = createProvider(nextBase);
     } catch (e) {
       return err('E_INVALID_CONFIG', `配置无效: ${e instanceof Error ? e.message : String(e)}`, 'llm');
     }
+    this.baseProviderConfig = nextBase;
     if (models) {
       this.models = models;
     } else if (model && !this.models.includes(model)) {
@@ -165,6 +206,7 @@ export class ModelPolicyService {
     } catch {
       // Persistence failure does not invalidate the in-memory provider.
     }
+    this.refreshSubagents(persist);
     return { ok: true, data: null };
   }
 
@@ -288,6 +330,10 @@ export class ModelPolicyService {
     if (typeof cfg.baseUrl === 'string' && cfg.baseUrl.trim()) this.savedBaseUrl = cfg.baseUrl.trim();
     if (typeof cfg.model === 'string' && cfg.model.trim()) this.currentModel = cfg.model.trim();
     if (cfg.reasoningEffort === 'low' || cfg.reasoningEffort === 'medium' || cfg.reasoningEffort === 'high') this.reasoningEffort = cfg.reasoningEffort;
+    // 并发上限夹在 1..16：桌面单机再高没有意义，只会更快撞上网关限流
+    if (typeof cfg.maxParallelToolCalls === 'number' && Number.isFinite(cfg.maxParallelToolCalls)) {
+      this.maxParallelToolCalls = Math.min(16, Math.max(1, Math.floor(cfg.maxParallelToolCalls)));
+    }
   }
 
   private applyPolicy(): void {
