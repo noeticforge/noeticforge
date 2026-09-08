@@ -2,6 +2,42 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。所有对外行为变化（IPC 通道、事件 payload、插件协议、错误码）都必须记录在此。
 
+## [0.7.0] - 2026-09-08（子代理角色化编排 + 并发调度 + 网络韧性，1535273240sch-droid）
+
+### 子代理：从「同一个模型跑同样的活」升级为「按角色分工」
+- **角色表（`config.json` → `subagents`）**：每个角色可独立声明 `model` / `provider` / `apiKey` / `baseUrl` / `systemPrompt` / `tools` / `disallowedTools` / `maxIterations` / `reasoningEffort`；**未声明的字段自动继承主配置**——接好一个网关后换模型只需写一个 `model`。支持 `defaultRole` 兜底；指向不存在角色的 `defaultRole` 被忽略而非静默生效。
+- **`subagent.run` 新增 `role` 参数**（枚举由角色表在启动时生成），角色清单同时编进工具 `description`，主代理派活时即可见；新增 **`subagent.roles`** 工具返回角色 / 模型 / 职责 / 工具范围的实时表格。
+- **工具白名单**：角色可收窄子代理可见工具（精确名或 `read-file.*` 前缀）；`core-` 前缀恒定剔除，禁止嵌套派生的既有约束不变。
+- **提示词可覆盖**：角色自带 `systemPrompt` 时覆盖主系统提示（轻量模型吃整套主提示会掉工具调用准确率），否则沿用主提示 + 子代理纪律。
+- **子代理工作纪律**：输出强制按【结论】【依据】【未完成 / 不确定】三段组织，依据必须是可核对的指针（路径+行号、命令与关键输出行）；信息不足时上报缺口而不是猜。回执上限由 20k 收紧到 **6k**（回执会原样进主对话上下文，20k 等于把隔离省下的 token 又从摘要这头还回去），且截断提示可行动：告知主代理内容不完整并给出下一步。
+- **空产出判为失败**：子代理跑完但零输出时返回 `ok:false, error:'subagent-empty'`。此前返回成功并附占位文本，会让主代理误以为这一路已查完——错误静默通过。
+
+### 并发调度：多个子代理真的同时跑
+- **插件协议新增 `AgentTool.parallelSafe?: boolean`**（缺省 `false` = 严格串行，完全向后兼容）：声明为 true 的工具可与**同一轮内连续声明**的其它 parallelSafe 调用并发执行。底座按声明调度，不认识任何具体工具。
+- **调度语义**：非并发调用充当屏障；连续并发调用聚成批次，受 `LoopOptions.maxParallelToolCalls`（`config.json` 的 `maxParallelToolCalls`，夹在 1–16，缺省 4）限流。
+- **四条不变量**：`tool` 消息一律按**原始调用顺序**回填（完成顺序不得污染消息数组）；同批次单个工具异常只影响自己；审批按 `messageId:toolCallId` 分键可并发；`tool-started` / `tool-result` 交错到达，UI 按 `toolCallId` 归因。
+- `subagent.run` / `subagent.roles` 已声明 `parallelSafe`（子代理上下文互相隔离，是唯一无争议的并发场景）。
+
+### 主代理委派策略：该拆才拆
+- 委派规则从「优先使用 subagent.run」改为**按任务形状判断**：纵向任务（一步接一步、要边做边对齐）自己干；横向任务（多个独立调查面、各自可单独验收）默认拆并发跑。判据一条——「过程很长、结论很短」。
+- 新增**反空转触发器**：同一类操作连续调用工具超过 3 次（反复 grep、反复换参数试同一条命令）即整块交给子代理。
+- 要求主代理对子代理影响结论的关键判断抽查证据后再采信。
+
+### 网络韧性：一次连接抖动不再让整轮归零
+- 新增 `src/providers/retry.ts`：`withRetry` 只对**连接层错误**（ECONNRESET / EPIPE / UND_ERR_* 等，含 `cause` 链）与 **408 / 409 / 425 / 429 / 5xx** 重试，指数退避 + 抖动；**用户主动 stop（AbortError）与 4xx 语义错误绝不重试**。
+- 重试只包裹「取得响应」这一步，**不包 SSE 消费**——流已开始吐字之后再重试会把同一段内容重复推给 UI。
+- 新增 `LLMHttpError` 携带状态码，重试策略按码判断而非正则匹配文案。
+- `config.json` 可选 `retry: { attempts, baseDelayMs }`（缺省 3 次 / 600ms 起；`attempts: 1` = 关闭），并随角色继承传递到子代理 provider。
+
+### shell-exec 的 Windows 修复
+- 此前 `spawn(cmd, { shell: true })` 在 Windows 固定走 cmd.exe，模型书写的 `grep` / `find -type` / `2>/dev/null` 全部失败。改为**优先探测 Git Bash / MSYS** 并以 `bash -c` 显式执行，找不到才退回 `cmd /d /s /c`；实际使用的 shell 写进工具 `description` 让模型自适配。
+- 修复输出解码：此前逐块 `String(d)` 按 UTF-8 解 cmd 的 GBK 输出，错误信息变成乱码——**模型读不懂失败原因就会反复重试同一条命令**。改为攒 Buffer 后按 `gbk` 统一解码（POSIX shell 下仍为 utf8），同时避免多字节字符被切断。
+
+### 验证
+- 单测 85 → **124 项全绿**（新增 `subagent-roles` 21、`loop-parallel` 6、`provider-retry` 10）；`tsc` 无错；冒烟测试 23 项、IPC 自测（含子代理隔离 / 禁止嵌套 / shell-exec 真实执行 / 72 通道接线完整）全部通过。
+- 新增 `scripts/subagent-e2e.ts`（`npm run test:subagent`）：接真实模型、不 mock 的三场景验收——`forced` 验委派 + 换模型 + 并发，`auto` 验「不命令它也会拆」，`trivial` 验「简单任务不过度编排」。
+- 既有 `providers-openai` 的 429 用例改为显式断言重试次数（此前是「意外通过」），并补 400 不重试的对照用例。
+
 ## [0.6.0] - 2026-09-06（上下文摘要压缩 v2：增量摘要 + 持久化 + 成本明示，Ljj041120）
 
 ### 核心机制升级

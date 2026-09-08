@@ -1,6 +1,6 @@
 {
   "name": "agent-base",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "开源桌面端 AI Agent 壳：Agent 循环引擎 + 插件/MCP 生态 + 多会话 + 审批治理",
   "type": "module",
   "main": "dist/src/electron/main.js",
@@ -19,6 +19,7 @@
     "check:codes": "node scripts/check-error-codes.mjs",
     "serve:vtx": "python scripts/serve-vtx-embed.py",
     "live:check": "node dist/scripts/live-check.js",
+    "test:subagent": "node dist/scripts/subagent-e2e.js config.e2e.json forced && node dist/scripts/subagent-e2e.js config.e2e.json auto && node dist/scripts/subagent-e2e.js config.e2e.json trivial",
     "dist": "electron-builder",
     "electron": "electron dist/src/electron/main.js"
   },
