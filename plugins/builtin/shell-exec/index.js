@@ -125,10 +125,12 @@ const runTool = {
         if (code === 0) {
           finish({ ok: true, output: text.slice(0, MAX_OUTPUT) || '（命令执行成功，无输出）' });
         } else {
+          // 非 0 退出码在终端工具中常代表条件状态（如 grep/findstr 无匹配退出码 1）
+          // 只要有输出内容即判定为执行完成，由大模型根据实际文本与退出码继续分析，避免死循环
           finish({
-            ok: false,
-            output: text.slice(0, MAX_OUTPUT),
-            error: `命令退出码 ${code}`,
+            ok: text.length > 0,
+            output: text ? `${text.slice(0, MAX_OUTPUT)}\n[进程退出码: ${code}]` : `命令执行结束，退出码: ${code}，无输出`,
+            error: text.length === 0 ? `命令退出码 ${code}` : undefined,
           });
         }
       });

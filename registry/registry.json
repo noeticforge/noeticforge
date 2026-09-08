@@ -6,8 +6,8 @@
     {
       "name": "system-master",
       "version": "1.0.0",
-      "displayName": "全能系统管家",
-      "description": "全盘文件读写、桌面一键投放、PowerShell/CMD终端调度与硬件性能全景扫描",
+      "displayName": "全能系统管家 (System Master)",
+      "description": "全盘任意文件读写、Windows 真实桌面直投、PowerShell/CMD 全功能终端调度与整机性能全景扫描",
       "author": "何惜",
       "permissions": [
         "fs:read",
@@ -33,6 +33,19 @@
       "downloadUrl": "https://github.com/noeticforge/noeticforge/releases/download/v0.5.2/m3e-canvas-1.0.0.zip",
       "localPackage": "registry/packages/m3e-canvas-1.0.0.zip",
       "sha256": "e2a2097addc98946242e57f98f862574c0c6af51b1fd9b2b48c66c14b59e2013",
+      "protocolVersion": 1,
+      "homepage": "https://github.com/noeticforge/noeticforge"
+    },
+    {
+      "name": "ask-user",
+      "version": "1.0.0",
+      "displayName": "AI 决策交互选择",
+      "description": "任务面临多种技术路线、方案分歧或不确定需求时，向用户弹出液态玻璃 ABCD 选项卡片供快捷决策与自由补充",
+      "author": "何惜",
+      "permissions": [],
+      "downloadUrl": "https://github.com/noeticforge/noeticforge/releases/download/v0.5.6/ask-user-1.0.0.zip",
+      "localPackage": "registry/packages/ask-user-1.0.0.zip",
+      "sha256": "abdb7cad303e67f804e39a52a4ad9a0e5409db2b3193cac642b2c17902128a85",
       "protocolVersion": 1,
       "homepage": "https://github.com/noeticforge/noeticforge"
     }

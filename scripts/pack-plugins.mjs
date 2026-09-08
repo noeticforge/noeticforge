@@ -49,11 +49,20 @@ const p2 = packPlugin(
   ['fs:read', 'fs:write'],
 );
 
+const p3 = packPlugin(
+  'ask-user',
+  '1.0.0',
+  'AI 决策交互选择',
+  '面临多种技术路线、方案分歧或需求澄清时，弹出液态玻璃 ABCD 选项卡片供用户快捷决策并实时回填',
+  '何惜',
+  [],
+);
+
 const registry = {
   $schema: './registry.schema.md',
   name: 'agent-base-plugin-registry',
   version: 1,
-  plugins: [p1, p2],
+  plugins: [p1, p2, p3],
 };
 
 writeFileSync('registry/registry.json', JSON.stringify(registry, null, 2), 'utf-8');

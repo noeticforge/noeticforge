@@ -255,6 +255,7 @@ export class SubagentRunner {
           signal: this.opts.getAbortSignal(sessionId),
           allowedPermissions: policy.allowedPermissions,
           forceApprovalPermissions: policy.forceApprovalPermissions,
+          skipAllApprovals: policy.permissionMode === 'full',
           reasoningEffort: role?.reasoningEffort ?? policy.reasoningEffort,
           maxParallelToolCalls: policy.maxParallelToolCalls,
           pluginSettings: (name) => this.opts.getPluginSettings(name),

@@ -229,9 +229,12 @@ async function executeToolCall(call: ToolCall, registry: ToolRegistry, options: 
   options.onEvent({ type: 'tool-started', call });
 
   // 第二道关卡：审批（插件声明 requiresApproval，或权限命中底座的强制审批列表）
-  const needsApproval =
+  // 在完全访问放行模式下（options.skipAllApprovals === true），彻底放行所有常规操作，仅人机交互工具保留交互
+  const isInteractionTool = call.name.startsWith('ask-user.');
+  const needsApproval = isInteractionTool || (!options.skipAllApprovals && (
     entry.tool.requiresApproval === true ||
-    entry.tool.permissions.some((p) => options.forceApprovalPermissions?.includes(p));
+    entry.tool.permissions.some((p) => options.forceApprovalPermissions?.includes(p))
+  ));
   if (needsApproval) {
     options.onEvent({ type: 'approval-required', call });
     if (options.requestApproval) {

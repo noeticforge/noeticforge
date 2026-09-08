@@ -245,6 +245,7 @@ export class AgentService {
           signal: running.abort.signal,
           allowedPermissions: policy.allowedPermissions,
           forceApprovalPermissions: policy.forceApprovalPermissions,
+          skipAllApprovals: policy.permissionMode === 'full',
           reasoningEffort: policy.reasoningEffort,
           maxParallelToolCalls: policy.maxParallelToolCalls,
           pluginSettings: (name) => this.plugins.getPluginSettings(name),
