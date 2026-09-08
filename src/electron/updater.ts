@@ -74,6 +74,37 @@ function fail(message: string): IpcResult<never> {
   return { ok: false, error: { code: UPDATER_ERROR_CODE, message, phase: 'unknown' } };
 }
 
+/**
+ * 私有仓库 + 无凭据时，electron-updater 只会抛一个裸 404，用户完全看不出该干什么。
+ * 这里在真正发请求之前先看一眼 app-update.yml：provider 是 github 且 private: true，
+ * 而环境里没有 GH_TOKEN / GITHUB_TOKEN，就直接给出可行动的说明。
+ *
+ * 返回 null = 不适用（公开仓库 / 已有凭据 / 读不到配置），照常走原流程。
+ */
+export function missingPrivateRepoTokenHint(appDir: string): string | null {
+  if (process.env.GH_TOKEN || process.env.GITHUB_TOKEN) return null;
+  const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
+  const candidates = [
+    resourcesPath ? path.join(resourcesPath, 'app-update.yml') : '',
+    path.join(appDir, 'app-update.yml'),
+  ].filter(Boolean);
+  for (const file of candidates) {
+    try {
+      if (!existsSync(file)) continue;
+      const txt = readFileSync(file, 'utf-8');
+      if (/provider:\s*github/.test(txt) && /^\s*private:\s*true\s*$/m.test(txt)) {
+        return '自动更新需要访问凭据：本应用从私有 GitHub 仓库检查更新，当前未检测到 GH_TOKEN / GITHUB_TOKEN。'
+          + '请设置一个具备该仓库读取权限的 Personal Access Token 到环境变量 GH_TOKEN 后重启应用；'
+          + '或把仓库的 Releases 设为公开。';
+      }
+      return null;
+    } catch {
+      // 读不到配置就按「不适用」处理，让真实错误自己冒出来
+    }
+  }
+  return null;
+}
+
 /** 应用版本（与 package.json 同源，避免与 agent-service 双写漂移） */
 let APP_VERSION = 'dev';
 try {
@@ -165,6 +196,12 @@ export class UpdateManager {
   /** 检查更新（用户主动或启动时）。发现新版本只提示、不下载。 */
   async checkUpdates(): Promise<IpcResult<UpdateState>> {
     if (!this.enabled) return { ok: true, data: this.state };
+    // 私有仓库缺凭据时提前拦下：省掉一次注定 404 的请求，并给出能照着做的指引
+    const hint = missingPrivateRepoTokenHint(this.appDir);
+    if (hint) {
+      this.setState({ status: 'error', error: hint });
+      return fail(hint);
+    }
     try {
       this.setState({ status: 'checking', error: undefined });
       const result = await this.updater.checkForUpdates();

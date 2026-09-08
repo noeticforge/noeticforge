@@ -5,6 +5,7 @@ import path from 'node:path';
 import {
   UpdateManager,
   UPDATER_PUSH_CHANNEL,
+  missingPrivateRepoTokenHint,
   type UpdateState,
 } from '../src/electron/updater.js';
 import type { AppUpdater, UpdateInfo } from 'electron-updater';
@@ -286,6 +287,94 @@ describe('UpdateManager（硬边界：无静默安装）', () => {
       expect(mgr.isEnabled()).toBe(false);
     } finally {
       await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('私有仓库缺凭据的可行动提示', () => {
+  const saved = { gh: process.env.GH_TOKEN, ght: process.env.GITHUB_TOKEN };
+  const noTokens = (): void => {
+    delete process.env.GH_TOKEN;
+    delete process.env.GITHUB_TOKEN;
+  };
+  const restoreTokens = (): void => {
+    if (saved.gh !== undefined) process.env.GH_TOKEN = saved.gh;
+    else delete process.env.GH_TOKEN;
+    if (saved.ght !== undefined) process.env.GITHUB_TOKEN = saved.ght;
+    else delete process.env.GITHUB_TOKEN;
+  };
+
+  async function dirWith(yml: string): Promise<string> {
+    const dir = await mkdtemp(path.join(tmpdir(), 'agent-base-updcfg-'));
+    await writeFile(path.join(dir, 'app-update.yml'), yml, 'utf-8');
+    return dir;
+  }
+
+  const PRIVATE_GITHUB = 'owner: noeticforge\nrepo: noeticforge\nprovider: github\nprivate: true\n';
+
+  it('私有 GitHub 仓库 + 无凭据 → 给出能照着做的说明', async () => {
+    noTokens();
+    const dir = await dirWith(PRIVATE_GITHUB);
+    try {
+      const hint = missingPrivateRepoTokenHint(dir);
+      expect(hint).toContain('GH_TOKEN');
+      expect(hint).toContain('Personal Access Token');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+      restoreTokens();
+    }
+  });
+
+  it('公开仓库（没有 private: true）不打扰', async () => {
+    noTokens();
+    const dir = await dirWith('provider: github\nowner: o\nrepo: r\n');
+    try {
+      expect(missingPrivateRepoTokenHint(dir)).toBeNull();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+      restoreTokens();
+    }
+  });
+
+  it('已有 GH_TOKEN 时不再提示', async () => {
+    noTokens();
+    process.env.GH_TOKEN = 'fake-token-for-test';
+    const dir = await dirWith(PRIVATE_GITHUB);
+    try {
+      expect(missingPrivateRepoTokenHint(dir)).toBeNull();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+      restoreTokens();
+    }
+  });
+
+  it('非 github provider（如 generic 自建源）不提示', async () => {
+    noTokens();
+    const dir = await dirWith('provider: generic\nurl: https://example.invalid/\n');
+    try {
+      expect(missingPrivateRepoTokenHint(dir)).toBeNull();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+      restoreTokens();
+    }
+  });
+
+  it('checkUpdates 命中缺凭据时提前失败：一次网络请求都不发', async () => {
+    noTokens();
+    const dir = await withAppDir(true);
+    await writeFile(path.join(dir, 'app-update.yml'), PRIVATE_GITHUB, 'utf-8');
+    try {
+      const fake = new FakeUpdater();
+      const pushes: { channel: string; payload: unknown }[] = [];
+      const mgr = makeManager(dir, fake, pushes);
+      const res = await mgr.checkUpdates();
+      expect(res.ok).toBe(false);
+      expect(fake.checkCalls).toBe(0);
+      expect(lastStatus(pushes)).toBe('error');
+      expect(mgr.getState().data?.error).toContain('GH_TOKEN');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+      restoreTokens();
     }
   });
 });
