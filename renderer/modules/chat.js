@@ -276,6 +276,6 @@ export function renderHistory(messages) {
 }
 export function resetChatView() {
   el.messages.innerHTML = ''; ensureMsgCol(); st.tools.clear();
-  thoughtCapsules.forEach((tc) => clearInterval(tc.timer)); thoughtCapsules.clear();
+  clearAllThoughtCapsules();
   st.currentAssistant = null; st.currentMessageId = null; stopThink(); hideStatusCard();
 }

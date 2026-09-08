@@ -48,6 +48,19 @@
       "sha256": "abdb7cad303e67f804e39a52a4ad9a0e5409db2b3193cac642b2c17902128a85",
       "protocolVersion": 1,
       "homepage": "https://github.com/noeticforge/noeticforge"
+    },
+    {
+      "name": "theme-customizer",
+      "version": "1.0.0",
+      "displayName": "何惜专属艺术主题包",
+      "description": "提供 4 款深度调色高质感主题：银渐层流光透明玻璃、古典羊皮卷米白、素描手绘米白质感、8-Bit复古赛博像素",
+      "author": "何惜",
+      "downloadUrl": "https://raw.githubusercontent.com/noeticforge/noeticforge/main/registry/packages/theme-customizer-1.0.0.zip",
+      "sha256": "7faf9a934ae850140d2868f9bd6829e14c507961f7f4edd5213289bf18fcc7de",
+      "permissions": [],
+      "tools": [
+        "theme-customizer.switch_theme"
+      ]
     }
   ]
 }

@@ -225,13 +225,14 @@ export async function handleInstall() {
 }
 
 export function renderAppearancePage() {
-  const theme = document.body.classList.contains('theme-dark') ? 'theme-dark' : 'theme-light';
-  document.querySelectorAll('.theme-card').forEach((c) => c.classList.toggle('active', c.dataset.theme === theme));
+  const currentTheme = localStorage.getItem('ab-theme') || (document.body.classList.contains('theme-dark') ? 'theme-dark' : 'theme-light');
+  document.querySelectorAll('.theme-card').forEach((c) => c.classList.toggle('active', c.dataset.theme === currentTheme));
   $('#opt-anim').checked = !document.body.classList.contains('no-anim');
 }
 
 export function applyTheme(theme) {
-  document.body.classList.remove('theme-light', 'theme-dark');
+  const allThemes = ['theme-light', 'theme-dark', 'theme-silver-glass', 'theme-parchment', 'theme-handdrawn', 'theme-pixel'];
+  document.body.classList.remove(...allThemes);
   document.body.classList.add(theme);
   localStorage.setItem('ab-theme', theme);
   renderAppearancePage();

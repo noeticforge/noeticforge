@@ -5,6 +5,9 @@
 
 import { el, st, POLICY_LABEL, EFFORT_LABEL } from './state.js';
 import { invoke, toast, openMenu } from './utils.js';
+import { ClaudeEffortCard } from './claude-effort-card.js';
+
+let activeEffortCard = null;
 
 const handlers = {
   openSettings: (_page) => {},
@@ -73,24 +76,50 @@ export function openModelMenu() {
 }
 
 export function openEffortMenu() {
-  const cur = st.appInfo?.reasoningEffort;
-  const items = [{ head: '推理力度（透传模型 reasoning 参数）' }];
-  for (const key of ['low', 'medium', 'high']) {
-    items.push({
-      ico: '◎', label: EFFORT_LABEL[key],
-      active: cur === key,
-      onClick: async () => {
-        const r = await invoke(window.agentBase.setAgentPolicy({ reasoningEffort: key }), '调整推理力度');
-        if (r.ok) { toast('已切换推理力度：' + EFFORT_LABEL[key], 'ok'); await refreshAppInfo(); }
-      },
-    });
+  const existing = document.querySelector('.effort-popover');
+  if (existing) {
+    activeEffortCard?.destroy();
+    existing.remove();
+    activeEffortCard = null;
+    return;
   }
-  items.push({
-    ico: '○', label: '默认', sub: '不透传参数，由模型默认行为决定',
-    active: !cur,
-    onClick: () => toast('当前为默认（不透传）。设置推理力度后即自动透传。', 'info'),
+  const pop = document.createElement('div');
+  pop.className = 'effort-popover';
+  const rect = el.btnEffort.getBoundingClientRect();
+  pop.style.left = `${Math.max(12, rect.left - 120)}px`;
+  pop.style.bottom = `${window.innerHeight - rect.top + 8}px`;
+  document.body.appendChild(pop);
+
+  // 记忆用户当前选中的真实档位百分比
+  let initialSliderVal = 75;
+  const savedEffort = localStorage.getItem('ab-claude-slider-val');
+  if (savedEffort !== null) {
+    initialSliderVal = Number(savedEffort);
+  } else {
+    const curEffort = st.appInfo?.reasoningEffort;
+    if (curEffort === 'low') initialSliderVal = 25;
+    else if (curEffort === 'medium') initialSliderVal = 50;
+    else if (curEffort === 'high') initialSliderVal = 75;
+  }
+
+  activeEffortCard = new ClaudeEffortCard(pop, initialSliderVal, async (effort, label, snapVal) => {
+    localStorage.setItem('ab-claude-slider-val', String(snapVal));
+    const r = await invoke(window.agentBase.setAgentPolicy({ reasoningEffort: effort }), '调整推理力度');
+    if (r.ok) {
+      toast(`推理档位: ${label} (${EFFORT_LABEL[effort] || effort})`, 'ok');
+      await refreshAppInfo();
+    }
   });
-  openMenu(el.btnEffort, items);
+
+  const closeOnOutside = (e) => {
+    if (!pop.contains(e.target) && !el.btnEffort.contains(e.target)) {
+      activeEffortCard?.destroy();
+      pop.remove();
+      activeEffortCard = null;
+      document.removeEventListener('pointerdown', closeOnOutside);
+    }
+  };
+  setTimeout(() => document.addEventListener('pointerdown', closeOnOutside), 10);
 }
 
 export function openPlusMenu() {

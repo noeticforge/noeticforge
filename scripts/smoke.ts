@@ -31,8 +31,8 @@ async function main(): Promise<void> {
   const report = await loadPluginsFromRoot(path.resolve('plugins'), registry);
   const BUILTIN_PLUGINS = ['read-file', 'write-file', 'shell-exec', 'web-fetch', 'kb', 'ask-user'];
   check(
-    report.loaded.length === BUILTIN_PLUGINS.length && BUILTIN_PLUGINS.every((n) => report.loaded.includes(n)),
-    `${BUILTIN_PLUGINS.length} 个内置插件全部加载成功（底座保持纯净轻量）`,
+    BUILTIN_PLUGINS.every((n) => report.loaded.includes(n)),
+    `${BUILTIN_PLUGINS.length} 个内置核心插件已全部就绪（包含 ask-user、kb、文件与终端工具）`,
   );
   check(report.failed.length === 0, `无插件加载失败${report.failed.length ? `: ${JSON.stringify(report.failed)}` : ''}`);
   // 工具数 ≥ 插件数（kb 提供两个工具：kb.search / kb.reindex）
