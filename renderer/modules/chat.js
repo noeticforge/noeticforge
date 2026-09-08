@@ -6,6 +6,7 @@ import { el, st } from './state.js';
 import { h, trunc, toText, argsSummary, toast, renderMarkdown, scrollBottom } from './utils.js';
 import { logEvent } from './right-panel.js';
 import { loadSessions } from './session.js';
+import { appendThoughtDelta, finalizeThoughtCapsule, clearAllThoughtCapsules } from './thought-module.js';
 let msgCol = null;
 export function ensureMsgCol() {
   if (!msgCol || !msgCol.isConnected) {
@@ -36,36 +37,10 @@ export function addUserBlock(content, opts = {}) {
   return block;
 }
 /** 助手正文块（流式追加；loop-done 后转 Markdown） */
-const thoughtCapsules = new Map();
-function ensureThoughtCapsule(messageId) {
-  ensureMsgCol();
-  let tc = thoughtCapsules.get(messageId);
-  if (!tc || !tc.capsule.isConnected) {
-    const capsule = h('div', 'thought-capsule thinking'), head = h('div', 'thought-header');
-    const brain = h('span', 'thought-brain', '🧠'), title = h('span', 'thought-title', 'AI 深度思考中…'), arr = h('span', 'thought-arrow', '▾');
-    head.append(brain, title, arr);
-    const body = h('div', 'thought-body'); capsule.append(head, body);
-    head.addEventListener('click', () => capsule.classList.toggle('expanded'));
-    const t0 = Date.now();
-    const timer = setInterval(() => {
-      if (capsule.classList.contains('thinking')) title.textContent = `AI 深度思考中 · ${Math.max(1, Math.round((Date.now() - t0) / 1000))} 秒…`;
-    }, 500);
-    msgCol.appendChild(capsule); scrollBottom();
-    tc = { capsule, body, title, t0, timer }; thoughtCapsules.set(messageId, tc);
-  }
-  return tc;
-}
-function finalizeThought(messageId) {
-  const tc = thoughtCapsules.get(messageId);
-  if (tc && tc.capsule.classList.contains('thinking')) {
-    clearInterval(tc.timer); tc.capsule.classList.remove('thinking');
-    tc.title.textContent = `已完成深度思考（耗时 ${Math.max(1, Math.round((Date.now() - tc.t0) / 1000))} 秒）`;
-  }
-}
 function ensureAssistantBlock(messageId) {
   ensureMsgCol();
   if (st.currentMessageId !== messageId || !st.currentAssistant || !st.currentAssistant.isConnected) {
-    finalizeThought(messageId);
+    finalizeThoughtCapsule(messageId);
     st.currentMessageId = messageId;
     st.currentAssistant = h('div', 'msg-block-assistant');
     st.currentAssistant.appendChild(h('div', 'stream-content'));
@@ -174,12 +149,10 @@ export function onChunk(p) {
   if (!isCurrentSession(p) || !p.delta) return;
   freezeThink();
   if (p.kind === 'thought') {
-    const tc = ensureThoughtCapsule(p.messageId);
-    tc.body.textContent += p.delta;
-    scrollBottom();
+    appendThoughtDelta(p.messageId, p.delta, ensureMsgCol(), scrollBottom);
     return;
   }
-  finalizeThought(p.messageId);
+  finalizeThoughtCapsule(p.messageId);
   pendingChunkText += p.delta;
   if (!chunkRafId) {
     chunkRafId = requestAnimationFrame(() => flushChunk(p.messageId));
@@ -228,6 +201,7 @@ export function onToolResult(p) {
 }
 export function onLoopDone(p) {
   flushChunk(p.messageId);
+  finalizeThoughtCapsule(p.messageId);
   logEvent('loop-done', p);
   setBusy(false, p.sessionId);
   if (!isCurrentSession(p)) return;
@@ -242,6 +216,7 @@ export function onLoopDone(p) {
 }
 export function onLoopErr(p) {
   flushChunk(p.messageId);
+  finalizeThoughtCapsule(p.messageId);
   logEvent('loop-error', p);
   setBusy(false, p.sessionId);
   if (!isCurrentSession(p)) return;
