@@ -2,8 +2,7 @@ import { ToolRegistry } from '../core/registry.js';
 import { runLoop } from '../core/loop.js';
 import { AgentLoopError } from '../core/errors.js';
 import { estimateMessageTokens } from '../core/context.js';
-import { isMessageContent, type MessageContent } from '../types.js';
-import type { ChatMessage, LoopEvent } from '../types.js';
+import { isMessageContent, type MessageContent, type ChatMessage, type LoopEvent } from '../types.js';
 import type { McpServerConfig, McpServerStatus } from '../mcp/manager.js';
 import type { ProviderMeta } from '../providers/registry.js';
 import { SessionService } from './services/session-service.js';
@@ -13,8 +12,7 @@ import { ApprovalAuditService } from './services/approval-audit-service.js';
 import { WorkspaceService } from './services/workspace-service.js';
 import { SubagentRunner } from './services/subagent-runner.js';
 import { PluginService } from './services/plugin-service.js';
-import { DEFAULT_REGISTRY_URL, err } from './types.js';
-import type { IpcResult, LoopError, PluginInfo, SessionMetaDTO, SessionDTO, PermissionMode, AppInfo, PushChannel, AgentServiceOptions, RunningLoop } from './types.js';
+import { DEFAULT_REGISTRY_URL, err, type IpcResult, type LoopError, type PluginInfo, type SessionMetaDTO, type SessionDTO, type PermissionMode, type AppInfo, type PushChannel, type AgentServiceOptions, type RunningLoop } from './types.js';
 export type { IpcResult, LoopError, PluginInfo, SessionMetaDTO, SessionDTO, PermissionMode, AppInfo, PushChannel, AgentServiceOptions, RunningLoop } from './types.js';
 export { PERMISSION_MODES, POLICY_PRESETS, SYSTEM_PROMPT, DEFAULT_REGISTRY_URL, APP_VERSION } from './types.js';
 export class AgentService {
@@ -36,11 +34,8 @@ export class AgentService {
     this.appDir = opts.appDir;
     this.pushEvent = opts.pushEvent;
     this.policy = new ModelPolicyService({
-      appDir: opts.appDir,
-      initialProvider: opts.initialProvider,
-      maxIterations: opts.maxIterations,
-      contextTokenBudget: opts.contextTokenBudget,
-      allowedPermissions: opts.allowedPermissions,
+      appDir: opts.appDir, initialProvider: opts.initialProvider, maxIterations: opts.maxIterations,
+      contextTokenBudget: opts.contextTokenBudget, allowedPermissions: opts.allowedPermissions,
       forceApprovalPermissions: opts.forceApprovalPermissions,
     });
     this.sessions = new SessionService(this.appDir, () => this.policy.getRuntimeState().provider, this.pushEvent);
@@ -245,6 +240,7 @@ export class AgentService {
           signal: running.abort.signal,
           allowedPermissions: policy.allowedPermissions,
           forceApprovalPermissions: policy.forceApprovalPermissions,
+          skipAllApprovals: policy.permissionMode === 'full',
           reasoningEffort: policy.reasoningEffort,
           maxParallelToolCalls: policy.maxParallelToolCalls,
           pluginSettings: (name) => this.plugins.getPluginSettings(name),

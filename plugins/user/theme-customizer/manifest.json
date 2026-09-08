@@ -1,0 +1,10 @@
+{
+  "name": "theme-customizer",
+  "version": "1.0.0",
+  "displayName": "何惜专属艺术主题包",
+  "description": "提供 4 款深度调色高质感主题：银渐层流光透明玻璃、古典羊皮卷米白、素描手绘米白质感、8-Bit复古赛博像素",
+  "author": "何惜",
+  "permissions": [],
+  "entry": "index.js",
+  "protocolVersion": 1
+}

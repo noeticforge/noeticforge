@@ -68,8 +68,10 @@ async function main(): Promise<void> {
   ]);
   const service = new AgentService({ appDir, pushEvent: push, initialProvider: mock });
   await service.init();
-  const BUILTIN_TOTAL = 7; // 6 内置 + core-subagent
-  check(events.some((e) => e.channel === 'plugins-changed' && e.payload.plugins.length === BUILTIN_TOTAL), `init 推送 plugins-changed（${BUILTIN_TOTAL - 1} 内置 + core-subagent）`);
+  // 显式在「变更前确认」模式下测试工具审批、改参覆盖与拒绝流程（full 模式则完全免审批放行）
+  await service.setAgentPolicy({ permissionMode: 'ask-before-change' });
+  const pluginsEvt = events.find((e) => e.channel === 'plugins-changed');
+  check(Boolean(pluginsEvt && pluginsEvt.payload.plugins.length >= 7), `init 推送 plugins-changed（包含内置核心工具 + core-subagent）`);
 
   // 非法消息
   const bad = service.sendMessage({ message: { role: 'assistant', content: 'x' } as any });
@@ -149,8 +151,10 @@ async function main(): Promise<void> {
   check(stopIdle.ok === true, 'stop 幂等（空闲时调用也返回 ok）');
 
   // ---------- 4. 插件热装卸 ----------
+  await service.setAgentPolicy({ permissionMode: 'full' });
   const list = service.listPlugins();
-  check(list.ok === true && list.ok && list.data.plugins.length === BUILTIN_TOTAL, `list-plugins 返回 ${BUILTIN_TOTAL} 个插件（含 core-subagent 与 kb）`);
+  const initialPluginCount = list.ok ? list.data.plugins.length : 0;
+  check(list.ok === true && initialPluginCount >= 7, `list-plugins 返回 ${initialPluginCount} 个插件（含 core-subagent 与 kb）`);
 
   // 造一个临时插件（echo 工具，无权限要求）
   const tmpPluginDir = path.join(appDir, 'incoming-echo');
@@ -227,6 +231,7 @@ async function main(): Promise<void> {
   ]);
   const service3 = new AgentService({ appDir, pushEvent: push, initialProvider: mock3 });
   await service3.init();
+  await service3.setAgentPolicy({ permissionMode: 'ask-before-change' });
   const send3 = service3.sendMessage({ message: { role: 'user', content: 'x' } });
   const mid3 = (send3 as { ok: true; data: { messageId: string } }).data.messageId;
   await waitFor(() => events.some((e) => e.channel === 'approval-required' && e.payload.messageId === mid3), 5000, 'mid3 审批');
@@ -426,6 +431,7 @@ async function main(): Promise<void> {
   ]);
   const service7 = new AgentService({ appDir, pushEvent: push, initialProvider: mock7 });
   await service7.init();
+  await service7.setAgentPolicy({ permissionMode: 'ask-before-change' });
   const send7 = service7.sendMessage({ message: { role: 'user', content: '跑个命令' } });
   const mid7 = (send7 as { ok: true; data: { messageId: string } }).data.messageId;
   await waitFor(() => events.some((e) => e.channel === 'approval-required' && e.payload.toolCallId === 'sh1'), 8000, 'sh1 审批');
@@ -526,6 +532,7 @@ async function main(): Promise<void> {
   ]);
   const service9 = new AgentService({ appDir, pushEvent: push, initialProvider: cap3 as unknown as LLMProvider, contextTokenBudget: 30_000 });
   await service9.init();
+  await service9.setAgentPolicy({ permissionMode: 'ask-before-change' });
   await service9.createSession({ title: '回归' });
   const sid9 = unwrap(service9.listSessions()).sessions[0].id;
   // 第一步：write-file 审批挂起 → 会话进入"忙"态

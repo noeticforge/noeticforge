@@ -36,7 +36,6 @@ export function addUserBlock(content, opts = {}) {
   scrollBottom();
   return block;
 }
-/** 助手正文块（流式追加；loop-done 后转 Markdown） */
 function ensureAssistantBlock(messageId) {
   ensureMsgCol();
   if (st.currentMessageId !== messageId || !st.currentAssistant || !st.currentAssistant.isConnected) {
@@ -72,13 +71,8 @@ function finishToolRow(toolCallId, result) {
   t.ico.textContent = t.ok ? '✓' : '✗'; t.dur.textContent = (ms / 1000).toFixed(1) + 's';
   if (!t.ok && result.error) t.sum.textContent += ' · ' + result.error;
   t.output = result.output || '';
-if (typeof marked !== 'undefined') {
-    const renderType = typeof result.render === 'object' ? result.render?.type : result.render;
-    const renderText = typeof result.render === 'object' ? result.render?.content : t.output;
-    if (renderType === 'markdown' && renderText) {
-      t.out.classList.remove('hidden');
-      t.out.appendChild(renderMarkdown(trunc(renderText, 4000)));
-    }
+  if (result.render === 'markdown' && typeof marked !== 'undefined') {
+    t.out.classList.remove('hidden'); t.out.appendChild(renderMarkdown(trunc(t.output, 4000)));
   }
   scrollBottom();
 }
@@ -201,7 +195,6 @@ export function onToolResult(p) {
 }
 export function onLoopDone(p) {
   flushChunk(p.messageId);
-  finalizeThoughtCapsule(p.messageId);
   logEvent('loop-done', p);
   setBusy(false, p.sessionId);
   if (!isCurrentSession(p)) return;
@@ -216,7 +209,6 @@ export function onLoopDone(p) {
 }
 export function onLoopErr(p) {
   flushChunk(p.messageId);
-  finalizeThoughtCapsule(p.messageId);
   logEvent('loop-error', p);
   setBusy(false, p.sessionId);
   if (!isCurrentSession(p)) return;
@@ -232,19 +224,6 @@ export function onLoopErr(p) {
   msgCol.appendChild(row);
   scrollBottom();
 }
-
-/** 上下文压缩提示（单行分隔；悬浮展示摘要全文） */
-export function onContextCompacted(p) {
-  logEvent('context-compacted', p);
-  if (!isCurrentSession(p)) return;
-  ensureMsgCol();
-  const row = h('div', 'compact-notice', `🗜 较早的 ${p.coveredCount} 条历史消息已压缩为摘要，完整记录不受影响`);
-  row.title = p.summary || '';
-  msgCol.appendChild(row);
-  msgCol.appendChild(h('div', 'msg-gap'));
-  scrollBottom();
-}
-
 /** 从会话消息数组重建扁平对话流 */
 export function renderHistory(messages) {
   resetChatView();
@@ -276,6 +255,6 @@ export function renderHistory(messages) {
 }
 export function resetChatView() {
   el.messages.innerHTML = ''; ensureMsgCol(); st.tools.clear();
-  clearAllThoughtCapsules();
+  clearAllThoughtCapsules(); currentToolCapsule = null;
   st.currentAssistant = null; st.currentMessageId = null; stopThink(); hideStatusCard();
 }

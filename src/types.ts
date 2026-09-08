@@ -202,6 +202,8 @@ export interface LoopOptions {
   allowedPermissions?: Permission[];
   /** 强制审批的权限列表：工具权限命中即必须审批，可覆盖插件 requiresApproval: false 的声明 */
   forceApprovalPermissions?: Permission[];
+  /** 完全放行标志：为 true 时彻底跳过工具内置审批（用于 full 完全访问模式，交互决策类工具除外） */
+  skipAllApprovals?: boolean;
   /** 查询插件设置值（富插件协议 v2）：注入 ToolContext.settings；未配置返回 undefined */
   pluginSettings?: (pluginName: string) => Record<string, unknown> | undefined;
   /** 推理力度：透传给 provider（见 ChatOptions.reasoningEffort） */
