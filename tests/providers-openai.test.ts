@@ -92,9 +92,26 @@ describe('OpenAICompatibleProvider.chat（mock fetch）', () => {
     expect(JSON.parse(String(init.body))).toMatchObject({ model: 'deepseek-chat', stream: false });
   });
 
-  it('非 2xx → 抛出带状态码的错误', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('quota exceeded', { status: 429 })));
-    await expect(provider().chat([], [])).rejects.toThrow(/429/);
+  it('429 属限流：先重试，次数用尽后仍抛出带状态码的错误', async () => {
+    const fetchMock = vi.fn(async () => new Response('quota exceeded', { status: 429 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const p = new OpenAICompatibleProvider({
+      id: 'deepseek', baseUrl: 'https://api.test/v1', apiKey: 'sk-test', model: 'deepseek-chat',
+      retry: { attempts: 3, baseDelayMs: 1 },
+    });
+    await expect(p.chat([], [])).rejects.toThrow(/429/);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('400 是语义错误：立刻抛出，不浪费退避时间', async () => {
+    const fetchMock = vi.fn(async () => new Response('bad request', { status: 400 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const p = new OpenAICompatibleProvider({
+      id: 'deepseek', baseUrl: 'https://api.test/v1', apiKey: 'sk-test', model: 'deepseek-chat',
+      retry: { attempts: 3, baseDelayMs: 1 },
+    });
+    await expect(p.chat([], [])).rejects.toThrow(/400/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('SSE 流式：content 增量回调 + tool_calls 分片按 index 聚合 + finish_reason', async () => {

@@ -16,6 +16,11 @@ export interface ProviderConfig {
   maxTokens?: number;
   /** OpenAI 兼容端点透传 reasoning_effort（默认关闭：部分严格网关会对未知字段报 400） */
   enableReasoningEffort?: boolean;
+  /**
+   * 瞬时故障（连接被掐 / 429 / 5xx）的重试策略。
+   * 缺省 3 次尝试、600ms 起指数退避；`{ attempts: 1 }` = 关闭重试。
+   */
+  retry?: { attempts?: number; baseDelayMs?: number };
 }
 
 /** 切换模型 = 改配置文件，代码零改动 */

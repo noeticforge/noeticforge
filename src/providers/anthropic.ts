@@ -1,4 +1,5 @@
 import type { ChatMessage, ChatOptions, LLMProvider, LLMResponse, ToolDefinition } from '../types.js';
+import { LLMHttpError, withRetry, type RetryOptions } from './retry.js';
 
 interface AnthropicOptions {
   apiKey: string;
@@ -6,6 +7,8 @@ interface AnthropicOptions {
   baseUrl?: string;
   /** Messages API 的 max_tokens（缺省 8192） */
   maxTokens?: number;
+  /** 瞬时故障重试策略（缺省 3 次、600ms 起指数退避）；attempts: 1 = 关闭重试 */
+  retry?: RetryOptions;
 }
 
 /** Anthropic 消息格式适配器（system 独立、tool_result 走 user 消息）。v0.3：SSE 流式 + 可中断。 */
@@ -58,21 +61,24 @@ export class AnthropicProvider implements LLMProvider {
     }
     if (streaming) body.stream = true;
 
-    const res = await fetch(`${this.baseUrl}/v1/messages`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': this.opts.apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify(body),
-      signal: chatOptions?.signal,
-    });
-
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`[anthropic] API 请求失败 ${res.status}: ${text.slice(0, 500)}`);
-    }
+    // 只重试「拿到响应」这一步；SSE 开始吐字之后重试会把同一段内容重复推给 UI
+    const res = await withRetry(async () => {
+      const r = await fetch(`${this.baseUrl}/v1/messages`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': this.opts.apiKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify(body),
+        signal: chatOptions?.signal,
+      });
+      if (!r.ok) {
+        const text = await r.text().catch(() => '');
+        throw new LLMHttpError(`[anthropic] API 请求失败 ${r.status}: ${text.slice(0, 500)}`, r.status);
+      }
+      return r;
+    }, { ...this.opts.retry, signal: chatOptions?.signal });
 
     if (streaming && res.body) {
       return consumeSseStream(res.body, chatOptions!.onChunk!);

@@ -1,4 +1,5 @@
 import type { ChatMessage, ChatOptions, ContentPart, LLMProvider, LLMResponse, ToolDefinition } from '../types.js';
+import { LLMHttpError, withRetry, type RetryOptions } from './retry.js';
 
 interface OpenAICompatibleOptions {
   id: string;
@@ -7,6 +8,8 @@ interface OpenAICompatibleOptions {
   model: string;
   /** 显式开启后才透传 reasoning_effort（部分严格网关会对未知字段报 400） */
   enableReasoningEffort?: boolean;
+  /** 瞬时故障重试策略（缺省 3 次、600ms 起指数退避）；attempts: 1 = 关闭重试 */
+  retry?: RetryOptions;
 }
 
 /**
@@ -43,21 +46,24 @@ export class OpenAICompatibleProvider implements LLMProvider {
       body.reasoning_effort = chatOptions.reasoningEffort;
     }
 
-    const res = await fetch(`${this.opts.baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${this.opts.apiKey}`,
-        Connection: 'keep-alive',
-      },
-      body: JSON.stringify(body),
-      signal: chatOptions?.signal,
-    });
-
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`[${this.id}] API 请求失败 ${res.status}: ${text.slice(0, 500)}`);
-    }
+    // 只重试「拿到响应」这一步；SSE 开始吐字之后重试会把同一段内容重复推给 UI
+    const res = await withRetry(async () => {
+      const r = await fetch(`${this.opts.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.opts.apiKey}`,
+          Connection: 'keep-alive',
+        },
+        body: JSON.stringify(body),
+        signal: chatOptions?.signal,
+      });
+      if (!r.ok) {
+        const text = await r.text().catch(() => '');
+        throw new LLMHttpError(`[${this.id}] API 请求失败 ${r.status}: ${text.slice(0, 500)}`, r.status);
+      }
+      return r;
+    }, { ...this.opts.retry, signal: chatOptions?.signal });
 
     if (streaming && res.body) {
       return consumeSseStream(res.body, chatOptions!.onChunk!);

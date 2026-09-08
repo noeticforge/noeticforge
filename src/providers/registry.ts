@@ -36,6 +36,7 @@ function openaiCompatible(cfg: ProviderConfig, fallbacks: { baseUrl: string; mod
     model: cfg.model ?? fallbacks.model,
     // reasoning_effort 透传：显式开启、或 DeepSeek 预设默认开启（通用兼容端点默认保持防 400 逃生门）
     enableReasoningEffort: cfg.enableReasoningEffort === true || cfg.provider === 'deepseek',
+    retry: cfg.retry,
   });
 }
 
@@ -75,6 +76,7 @@ register(
     model: cfg.model ?? 'claude-sonnet-4-5',
     baseUrl: cfg.baseUrl,
     maxTokens: cfg.maxTokens,
+    retry: cfg.retry,
   }),
 );
 
@@ -90,6 +92,7 @@ register(
       model: cfg.model ?? 'default',
       baseUrl: cfg.baseUrl,
       maxTokens: cfg.maxTokens,
+      retry: cfg.retry,
     });
   },
 );
