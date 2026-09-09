@@ -5,10 +5,46 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import AdmZip from 'adm-zip';
 import type { Plugin } from '../../types.js';
-import { loadPluginFromDir, loadPluginsFromRoot } from '../../plugins/loader.js';
+import { builtinPluginsDir, loadPluginFromDir, loadPluginsFromRoot } from '../../plugins/loader.js';
 import type { ToolRegistry } from '../../core/registry.js';
 import { err, findDirWithManifest, sanitizeName, toPluginInfo } from '../types.js';
 import type { IpcResult, PluginInfo, PushChannel } from '../types.js';
+
+/**
+ * 插件扫描根计算(纯函数,不碰 fs)。来源优先级:数据目录 → cwd → exe 同级 → 内置目录(打包态位于 app.asar)。
+ * 去重规则:与已保留根完全重复、或嵌套于任一已保留根的候选直接丢弃——同一插件被两个根重复注册必然名字冲突,
+ * 开发态 repo/plugins 天然覆盖 repo/plugins/builtin 正是此场景。存在性检查留给调用方(existsSync)。
+ */
+export function resolvePluginScanRoots(o: {
+  appDir: string;
+  cwd: string;
+  execPath: string;
+  builtinDir: string;
+}): string[] {
+  const candidates = [
+    path.resolve(o.appDir, 'plugins'),
+    path.resolve(o.cwd, 'plugins'),
+    path.resolve(path.dirname(o.execPath || ''), 'plugins'),
+    path.resolve(o.builtinDir),
+  ];
+  const kept: string[] = [];
+  for (const dir of candidates) {
+    const covered = kept.some((root) => {
+      const rel = path.relative(root, dir);
+      return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+    });
+    if (!covered) kept.push(dir);
+  }
+  return kept;
+}
+
+/** 内置插件目录下的同名目录存在 → 视为内置(打包态 appDir 在 Roaming,必须连 asar 内置目录一起查) */
+function isBuiltinPluginName(appDir: string, name: string): boolean {
+  return (
+    existsSync(path.join(appDir, 'plugins', 'builtin', name)) ||
+    existsSync(path.join(builtinPluginsDir(), name))
+  );
+}
 
 /**
  * Plugin install/uninstall, remote registry download with checksum,
@@ -35,18 +71,13 @@ export class PluginService {
   }
 
   async loadPlugins(): Promise<void> {
-    const primaryDir = path.join(this.appDir, 'plugins');
-    await loadPluginsFromRoot(primaryDir, this.registry);
-
-    // 打包安装或多路径自愈：若 appDir 位于独立 userData 目录，自动探测并扫描程序同级或 cwd 插件目录
-    const candidates = [
-      path.resolve(process.cwd(), 'plugins'),
-      path.join(path.dirname(process.execPath || ''), 'plugins'),
-    ];
-    for (const altDir of candidates) {
-      if (altDir && altDir !== primaryDir && existsSync(altDir)) {
-        await loadPluginsFromRoot(altDir, this.registry);
-      }
+    for (const root of resolvePluginScanRoots({
+      appDir: this.appDir,
+      cwd: process.cwd(),
+      execPath: process.execPath || '',
+      builtinDir: builtinPluginsDir(),
+    })) {
+      if (existsSync(root)) await loadPluginsFromRoot(root, this.registry);
     }
   }
 
@@ -171,7 +202,7 @@ export class PluginService {
     if (this.pluginsInUse.has(name)) {
       return err('E_PLUGIN_IN_USE', `插件 ${name} 的工具正在执行，暂不可卸载`, 'unknown');
     }
-    if (existsSync(path.join(this.appDir, 'plugins', 'builtin', name)) || name.startsWith('core-')) {
+    if (isBuiltinPluginName(this.appDir, name) || name.startsWith('core-')) {
       return err('E_PLUGIN_BUILTIN', `插件 ${name} 是内置插件，不允许卸载`, 'unknown');
     }
     const info = toPluginInfo(plugin);
