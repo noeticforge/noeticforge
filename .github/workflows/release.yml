@@ -1,5 +1,10 @@
 name: Release
 
+# 触发语义(CHANGELOG [0.7.1] 设计,v0.7.4 如实落地):
+#   - push v* tag:三平台矩阵各自「只构建不发布」(--publish never),产物上传统计后
+#     由**单一** publish job 汇总成**一条**非草稿 Release——根治矩阵并发抢建同 tag
+#     Release 的竞态(v0.5.8/v0.7.0 的产物曾被拆进两条 Release、latest*.yml 分散)。
+#   - workflow_dispatch:只验证构建,不发布(publish job 被 tag 条件挡住)。
 on:
   workflow_dispatch:
   push:
@@ -15,6 +20,7 @@ jobs:
       matrix:
         os: [windows-latest, macos-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -28,34 +34,48 @@ jobs:
       - run: npm run typecheck
       - run: npm run smoke
       - run: npm run test:unit
-      - name: Build and publish desktop installers
-        run: npx electron-builder --publish always
+      - run: npm run test:ipc
+      - run: npm run check:codes
+      - name: Build desktop installers (publish never — single publish job below)
+        run: npx electron-builder --publish never
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # 禁用自动探测未配置的代码签名证书
           CSC_IDENTITY_AUTO_DISCOVERY: false
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ matrix.os }}
+          path: |
+            release/*.exe
+            release/*.dmg
+            release/*.AppImage
+            release/*.zip
+            release/*.yml
+            release/*.blockmap
+          if-no-files-found: error
 
-  publish-release:
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - name: Automatically Publish Release (Remove Draft & Set as Latest)
-        uses: actions/github-script@v7
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
         with:
-          script: |
-            const tag = context.ref.replace('refs/tags/', '');
-            const { owner, repo } = context.repo;
-            const releases = await github.rest.repos.listReleases({ owner, repo, per_page: 20 });
-            const rel = releases.data.find(r => r.tag_name === tag);
-            if (rel) {
-              await github.rest.repos.updateRelease({
-                owner,
-                repo,
-                release_id: rel.id,
-                draft: false,
-                make_latest: 'true',
-              });
-              console.log(`🚀 Release ${tag} 已全自动解除 Draft，正式设置为 GitHub Latest 发布版！`);
-            } else {
-              console.log(`未找到与标签 ${tag} 匹配的 Release`);
-            }
+          pattern: installers-*
+          path: release
+          merge-multiple: true
+      - name: Generate release notes from CHANGELOG
+        run: node scripts/release-notes.mjs RELEASE_NOTES.md
+      - name: Publish single GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body_path: RELEASE_NOTES.md
+          draft: false
+          make_latest: 'true'
+          fail_on_unmatched_files: true
+          files: |
+            release/*
