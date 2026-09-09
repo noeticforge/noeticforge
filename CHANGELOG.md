@@ -2,6 +2,26 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。所有对外行为变化（IPC 通道、事件 payload、插件协议、错误码）都必须记录在此。
 
+## [0.7.4] - 2026-09-09（打包态内置插件修复 + 发布流水线单点发布如实落地，ZCode 协作）
+
+### 打包态严重缺陷：内置插件全丢（实测复现并修复）
+- **复现**：`electron-builder -w --dir` 实打包 + CDP 注入实测——修复前打包态仅加载 1 个内部注册的 core-subagent，
+  六个内置插件（ask-user/kb/read-file/shell-exec/web-fetch/write-file）**全部丢失**。根因：`loadPlugins` 的三条扫描路
+  （Roaming 数据目录 / 安装目录 / cwd）都够不到应用包内真正的 `resources/app.asar/plugins/builtin`，
+  而唯一能解析该路径的 `builtinPluginsDir()` 此前是零调用死代码；开发态（cwd=repo）与 journeys 恰好掩盖了问题。
+  发布版 agent 由此零工具可用。
+- **修复**：扫描根计算抽成纯函数 `resolvePluginScanRoots`（数据目录 → cwd → exe 同级 → asar 内置目录，
+  重复/嵌套根去重，dev/journeys 既有行为逐字不变），打包态实测恢复 7/7 加载；新增 4 项路径语义单测。
+- **顺带**：内置插件卸载保护改查 asar 内置目录（旧判断在打包态失效，内置插件可被"卸载"到下次重启才复活）。
+
+### 发布流水线：如实落地 CHANGELOG [0.7.1] 声明的单点发布
+- `release.yml` 重写：矩阵任务改为 `npx electron-builder --publish never` + `actions/upload-artifact`；
+  新增单一 `publish` job（仅 tag 触发）汇总三平台产物，用 `softprops/action-gh-release` 建**一条**非草稿 Release
+  （`make_latest` + `fail_on_unmatched_files`），根治 v0.5.8/v0.7.0 "产物拆进两条 Release、latest*.yml 分散"的竞态根因。
+  （v0.7.1 条目声称的这套改法当时未落地，workflow 实际仍是矩阵内 `--publish always`——本条补齐。）
+- `scripts/release-notes.mjs` 接入 publish job（`body_path: RELEASE_NOTES.md`），Release 正文自动生成自此真实生效。
+- 发布门禁对齐测试防线：build job 补跑 `test:ipc` 与 `check:codes`（此前这两条红了也能发版）。
+
 ## [0.7.3] - 2026-09-09（主进程崩溃日志落盘 + 注册表公开化，ZCode 协作）
 
 ### 稳定性：MVP 验收欠案清零（DEVELOPMENT_PLAN §3.6-3）
