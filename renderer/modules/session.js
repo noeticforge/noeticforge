@@ -27,11 +27,12 @@ export function renderSessions() {
   el.sessionEmpty.classList.toggle('hidden', list.length > 0);
   el.sessionEmpty.textContent = st.sessions.length ? '没有匹配的会话' : '暂无会话';
   for (const s of list) {
-    const item = h('div', 'session-item' + (s.id === st.currentSessionId ? ' active' : ''));
-    item.appendChild(h('span', 'ico-folder', '🗄'));
+    const isRunning = st.busySessions.has(s.id);
+    const item = h('div', 'session-item' + (s.id === st.currentSessionId ? ' active' : '') + (isRunning ? ' running' : ''));
+    item.appendChild(h('span', 'ico-folder', isRunning ? '◌' : '🗄'));
     const main = h('div', 'session-main');
     main.appendChild(h('span', 'session-name', s.title || '未命名会话'));
-    main.appendChild(h('span', 'session-time', relTime(s.updatedAt) + ' · ' + (s.messageCount || 0) + ' 条'));
+    main.appendChild(h('span', 'session-time', (isRunning ? '⚡ 正在执行 · ' : '') + relTime(s.updatedAt) + ' · ' + (s.messageCount || 0) + ' 条'));
     item.appendChild(main);
     const ops = h('div', 'session-ops');
     const rn = h('button', 'btn-mini', '改');
@@ -95,7 +96,7 @@ export async function doSwitchSession(id, opts = {}) {
   const r = await invoke(window.agentBase.switchSession({ id }), '切换会话');
   if (!r.ok) return;
   st.currentSessionId = id;
-  st.busy = st.busySessions.has(id);
+  chatHandlers.setBusy(st.busySessions.has(id), id);
   el.chatTitle.textContent = r.data.session.title || 'agent-base';
   chatHandlers.renderHistory(r.data.session.messages || []);
   renderSessions();
@@ -106,7 +107,7 @@ export async function newSession() {
   const r = await invoke(window.agentBase.createSession({}), '新建会话');
   if (r.ok && r.data.session) {
     st.currentSessionId = r.data.session.id;
-    st.busy = false;
+    chatHandlers.setBusy(false, r.data.session.id);
     el.chatTitle.textContent = r.data.session.title || '新的会话';
     chatHandlers.resetChatView();
     renderSessions();

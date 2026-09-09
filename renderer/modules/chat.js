@@ -5,7 +5,7 @@
 import { el, st } from './state.js';
 import { h, trunc, toText, argsSummary, toast, renderMarkdown, scrollBottom } from './utils.js';
 import { logEvent } from './right-panel.js';
-import { loadSessions } from './session.js';
+import { loadSessions, renderSessions } from './session.js';
 import { appendThoughtDelta, finalizeThoughtCapsule, clearAllThoughtCapsules } from './thought-module.js';
 let msgCol = null;
 export function ensureMsgCol() {
@@ -103,6 +103,15 @@ export function setBusy(busy, sessionId) {
   if (sid) { if (busy) st.busySessions.add(sid); else st.busySessions.delete(sid); }
   st.busy = st.currentSessionId ? st.busySessions.has(st.currentSessionId) : busy;
   el.input.placeholder = st.busy ? '当前会话进行中，继续输入将排队…' : '输入消息，Enter 发送，Shift+Enter 换行；@ 引用文件';
+  if (st.busy) {
+    el.sendBtn.classList.add('busy-running');
+    el.sendBtn.innerHTML = '<span class="send-ico-spin">◌</span>';
+    el.sendBtn.title = 'AI 正在执行中（点击可继续排队发送）';
+  } else {
+    el.sendBtn.classList.remove('busy-running');
+    el.sendBtn.textContent = '↑';
+    el.sendBtn.title = '发送';
+  }
 }
 export function showStatusCard() {
   st.scT0 = Date.now(); st.scToolCount = 0; st.scDone = 0; el.scItems.innerHTML = ''; el.scCount.textContent = '0/0';
@@ -204,6 +213,7 @@ export function onLoopDone(p) {
   finalizeThoughtCapsule(p.messageId);
   logEvent('loop-done', p);
   setBusy(false, p.sessionId);
+  renderSessions();
   if (!isCurrentSession(p)) return;
   freezeThink();
   const block = st.currentMessageId === p.messageId ? st.currentAssistant : null;
@@ -219,6 +229,7 @@ export function onLoopErr(p) {
   finalizeThoughtCapsule(p.messageId);
   logEvent('loop-error', p);
   setBusy(false, p.sessionId);
+  renderSessions();
   if (!isCurrentSession(p)) return;
   freezeThink();
   hideStatusCard();

@@ -13,7 +13,7 @@ import { logEvent, loadAudit, toggleRightPanel, startTerminal, onTermData } from
 import { openSettings, renderProviderDetail, modelChip, saveProvider, renderMcpPage, saveMcpJson, renderPluginsPage, handleInstall, applyTheme, handleFetchModels, onUpdaterState } from './modules/settings.js';
 import { setSessionChatHandlers, filteredSessions, renderSessions, loadSessions, doSwitchSession, newSession, onSessionsChanged } from './modules/session.js';
 import { onApproval, onApprove, onReject, onChoiceConfirm, onChoiceCancel } from './modules/approval.js';
-import { ensureMsgCol, onChunk, onToolStart, onToolResult, onLoopDone, onLoopErr, onContextCompacted, renderHistory, resetChatView } from './modules/chat.js';
+import { ensureMsgCol, onChunk, onToolStart, onToolResult, onLoopDone, onLoopErr, onContextCompacted, renderHistory, resetChatView, setBusy } from './modules/chat.js';
 import { handleSend, maybeOpenAtPicker, pickAttachments, handleDropFiles } from './modules/composer.js';
 
 /* ================= 窗口控制 ================= */
@@ -190,7 +190,7 @@ function init() {
   });
 
   setMenuHandlers({ openSettings, newSession, pickAttachments });
-  setSessionChatHandlers({ renderHistory, resetChatView });
+  setSessionChatHandlers({ renderHistory, resetChatView, setBusy });
   initWindowControls();
   if (!subscribe()) return;
   ensureMsgCol();
