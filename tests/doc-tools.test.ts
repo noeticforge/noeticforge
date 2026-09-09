@@ -157,4 +157,17 @@ describe('底座拒读引导(workspace-service)', () => {
     if (!r.ok) expect(r.error.message).toContain('doc-tools.extract');
     await rm(dir, { recursive: true, force: true });
   });
+
+  it('readAttachment 对文件夹给明确人话提示,而非 EISDIR 内部错误', async () => {
+    const dir = await tempDir();
+    const ws = new WorkspaceService(dir, () => 100_000);
+    const r = await ws.readAttachment({ path: dir });
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.error.code).toBe('E_INVALID_CONFIG');
+      expect(r.error.message).toContain('文件夹');
+      expect(r.error.message).not.toContain('EISDIR');
+    }
+    await rm(dir, { recursive: true, force: true });
+  });
 });

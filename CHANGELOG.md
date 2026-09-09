@@ -2,6 +2,12 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。所有对外行为变化（IPC 通道、事件 payload、插件协议、错误码）都必须记录在此。
 
+## [0.7.6] - 2026-09-09(拖入文件夹返回人话提示而非 EISDIR 内部错误,ZCode 协作)
+
+- `readAttachment` 增加 `isFile` 守卫:此前把**文件夹**拖进输入框,`readFileSync` 抛 `EISDIR` 内部错误被原样 toast 给用户;
+  现返回 `E_INVALID_CONFIG` 与人话("拖入的是文件夹,附件只接受单个文件……Office 文档请发路径用 doc-tools.extract 读取")。
+  `@` 引用路径本就有 isFile 判断,不动。+1 项单测断言错误码与文案。纯健壮性补丁,IPC 协议/错误码零新增。
+
 ## [0.7.5] - 2026-09-09（doc-tools 文档解析插件 + 二进制附件/注入诚实化，ZCode 协作）
 
 ### 新增内置插件 doc-tools（文档解析）

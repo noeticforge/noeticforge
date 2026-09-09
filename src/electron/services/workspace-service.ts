@@ -114,6 +114,9 @@ export class WorkspaceService {
     const imageTypes: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp' };
     try {
       const st = statSync(file);
+      if (!st.isFile()) {
+        return err('E_INVALID_CONFIG', '拖入的是文件夹，附件只接受单个文件（图片/文本/Office 文档请发路径让模型用 doc-tools.extract 读取）', 'unknown');
+      }
       if (imageTypes[ext]) {
         if (st.size > 5 * 1024 * 1024) return err('E_INVALID_CONFIG', '图片超过 5MB 上限', 'unknown');
         const data = readFileSync(file).toString('base64');
