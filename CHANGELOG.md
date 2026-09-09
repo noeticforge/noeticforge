@@ -2,6 +2,20 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。所有对外行为变化（IPC 通道、事件 payload、插件协议、错误码）都必须记录在此。
 
+## [0.7.3] - 2026-09-09（主进程崩溃日志落盘 + 注册表公开化，ZCode 协作）
+
+### 稳定性：MVP 验收欠案清零（DEVELOPMENT_PLAN §3.6-3）
+- **主进程崩溃兜底 `src/electron/crash-log.ts`**：`uncaughtException` / `unhandledRejection` 双 handler，
+  完整报告（ISO 时间戳 + 应用/Node 版本 + 平台架构 + 堆栈）追加落盘至数据目录 `crash.log`（与 config.json 同级）。
+  - 语义保持：`uncaughtException` 记录后按原语义退出（无 handler 时 Node 本就崩退，行为不变、只是多留证据）；
+    `unhandledRejection` 记录后存活——"handler 永不 throw"契约下它不该出现，出现即 bug，但单条 Promise 失败不整机陪葬；
+  - 边界自守：日志超 512KB 自动截断（崩溃风暴不撑爆磁盘）；写盘自身失败静默放弃（兜底路径无人接得住新异常）；
+  - 模块零 electron 依赖，10 项 vitest 单测覆盖格式化/追加/截断/双 handler/写盘失败全场景。
+- **崩溃现场从此可回溯**：用户反馈"闪退"时，Roaming 目录下 `crash.log` 即第一现场证据。
+
+### 注册表公开化（承接 v0.7.2 收尾）
+- `registry.json` 全部 `downloadUrl` 指向公开仓库 raw 地址，插件市场免认证可拉取。
+
 ## [0.7.2] - 2026-09-08（完全访问免审批 + 工具折叠盒 + 流光思考胶囊 + Ultra 旗舰版，何惜）
 
 ### 核心体验与交互突破

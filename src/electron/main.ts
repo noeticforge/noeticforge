@@ -6,6 +6,7 @@ import { AgentService } from './agent-service.js';
 import { registerWindowControls, attachWindowStatePush } from './window-controls.js';
 import { TerminalManager } from './terminal.js';
 import { UpdateManager } from './updater.js';
+import { installCrashGuards } from './crash-log.js';
 
 /**
  * Electron 主进程：唯一的职责是把 ipcMain 通道接到 AgentService 上、把推送转发给窗口。
@@ -30,6 +31,9 @@ function resolveDataDir(): string {
   return userData;
 }
 const appDir = resolveDataDir();
+
+// 崩溃兜底最先安装：启动链路上的异常也要留证据（MVP 验收 §3.6-3）
+installCrashGuards({ dir: appDir, appVersion: app.getVersion(), exit: (code) => app.exit(code) });
 
 // 如果系统环境配置了私有仓库 Token，确保注入 process.env 供 electron-updater 访问
 if (!process.env.GH_TOKEN && process.env.GITHUB_TOKEN) {

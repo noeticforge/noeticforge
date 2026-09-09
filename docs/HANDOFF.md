@@ -6,7 +6,30 @@
 > **🤖 AI 代理进场第一读**：任何 AI 编码代理接入本项目，**先完整读本文件再动代码**——
 > §〇 是最近一次交付快照，§四 铁律与 §五 已知边界是硬约束；读完按 §二 跑一遍防线验证环境。（规则同样写入根目录 `AGENTS.md` §0）
 
-## 〇、最新一轮交付快照（v0.6.0，2026-09-06，Ljj041120 / ZCode 协作）
+## 〇、最新一轮交付快照（v0.7.3，2026-09-09，ZCode 协作）
+
+**主线：主进程崩溃日志落盘**（了结 DEVELOPMENT_PLAN §3.6-3 / v0.6.0 快照下一轮建议②）：
+
+- 新模块 `src/electron/crash-log.ts`：`uncaughtException` 记录后按原语义退出（与无 handler 时的崩溃行为一致，只是留下证据）、
+  `unhandledRejection` 记录后存活；报告（ISO 时间戳 + 应用/Node 版本 + 平台架构 + 堆栈）追加至数据目录 `crash.log`；
+  超 512KB 自动截断；写盘失败静默（兜底路径禁止二次异常）。模块零 electron 依赖，`main.ts` 在数据目录解析后第一时间安装。
+- IPC 协议 / 错误码零改动，不触发契约先行流程；新增 10 项 vitest 单测。
+
+**本轮验证**：五条防线本地全绿（build / smoke 24 / unit **139** / ipc **94 断言·72 通道** / codes / window 7 项）；
+journeys E2E 本轮未重跑（改动不触及对话链路，main.ts 仅新增 3 行接线）。
+
+**此前两轮（v0.7.0–v0.7.2 + Ultra 旗舰版，2026-09-08，Ljj041120 / 何惜，明细见 CHANGELOG）**：
+插件协议 parallelSafe / 设置页 / 子代理角色 → 发布流水线竞态修复 + RELEASE_NOTES 自动生成 + 私有仓库 404 可行动提示 →
+完全访问免审批 / 工具聚合折叠盒 / Claude Code 风格流光思考胶囊（`renderer/modules/thought-module.js` 独立模块）/
+WebGL2 推理力度滑块 / 四大艺术主题 / 官方插件注册表（真实 SHA-256）/ 用户配置物理隔离 Roaming；
+registry.json downloadUrl 已全部指向公开仓库 raw 地址（**仓库已转公开，插件市场免认证**）。
+
+**下一轮建议（沿 v0.6.0 清单收敛，②已了结）**：
+① `live:check` 真模型联测（最老欠案，需真实 API Key）；
+③ 生态最后一公里：SDK 发 npm / `npm create` 脚手架 / 文档站——M3 门槛「3 个外部插件」仍是唯一未达标核心验收；
+④ 插件沙箱（utilityProcess）与签名排 v1.0（等有外部插件再动）。
+
+### 前轮快照存档（v0.6.0，2026-09-06，Ljj041120 / ZCode 协作）
 
 **主线：上下文摘要压缩 v2**（完整设计与验证数据见 `docs/CONTEXT_COMPACTION_REPORT.md`）：
 
@@ -24,12 +47,6 @@ journeys E2E 16 段 **23/23 全绿**；代码审查未发现新缺陷。已推�
 mock 兜底回显把会话改成乱码名（J8 失配）、后台标题请求覆盖 J11 的请求捕获文件；journeys 自 v0.5.0 时代后无人重跑故未暴露，
 **非 v0.6.0 引入**。修法：mock 对标题请求恒回「默认会话」且不写 `last-request.json`（详见 `journeys/mock-openai.mjs` 注释与 journeys/README）。
 
-**下一轮建议（对账自 DEVELOPMENT_PLAN，2026-09-06 已全文档勾选对账）**：
-① `live:check` 真模型联测（最老欠案，需真实 API Key，顺带观察真实模型下摘要质量）；
-② 主进程 `uncaughtException` 崩溃日志落盘（MVP 验收项，半小时级）；
-③ 生态最后一公里：SDK 发 npm / `npm create` 脚手架 / 文档站——M3 门槛「3 个外部插件」是唯一未达标核心验收；
-④ 插件沙箱（utilityProcess）与签名排 v1.0（等有外部插件再动）。
-
 ## 一、30 秒跑起来
 
 ```bash
@@ -46,7 +63,7 @@ npm run serve:vtx                    # 启动 http://127.0.0.1:8000/v1/embedding
 | 命令 | 测什么 | 需要 |
 |---|---|---|
 | `npm run smoke` | 循环引擎 + providers 多模态转换 + 严格网关兼容 + 终端后端 | 无（离线） |
-| `npm run test:unit` | vitest 单元测试 85 项（上下文裁剪/增量摘要压缩/Schema/注册表/会话存储/Provider 流解析/知识库 kb） | 无（离线） |
+| `npm run test:unit` | vitest 单元测试 139 项（上下文裁剪/增量摘要压缩/Schema/注册表/会话存储/Provider 流解析/知识库 kb/崩溃兜底） | 无（离线） |
 | `npm run test:ipc` | IPC 协议 94 项断言（含权限模式/排队/压缩复用与前缀稳定/子代理/MCP/通道接线完整性） | 无（离线） |
 | `npm run test:window` | 窗口控制（最小化/最大化/关闭/状态推送） | 桌面环境（**CI 不跑此防线**，必须本地验证） |
 | `npm run check:codes` | 错误码三方一致（事实源=协议文档=UI 文案） | 无（离线） |

@@ -115,7 +115,7 @@ git/LICENSE/CI    →    打包安装包 + 真UI    →    MCP 客户端接入  
 ### 3.6 MVP 验收（Definition of Done）
 - [ ] v0.2.0 三平台安装包发布到 GitHub Releases —— **现状**：v0.2.0 时代为纯代码版（零安装包）；安装包 + Release 流水线 v0.5.0 才具备，此后版本由 tag 流水线承接
 - [ ] **10 个群外真实用户**安装并完成至少一次"带工具调用的任务"（发问卷/群友转发）—— **现状**：无追踪数据，未确认达成
-- [ ] 崩溃率：主进程 0 未捕获异常（加 `process.on('uncaughtException')` 日志落盘）—— **现状**：未实现，`main.ts` 无 uncaughtException/unhandledRejection 兜底
+- [x] 崩溃率：主进程 0 未捕获异常（加 `process.on('uncaughtException')` 日志落盘）—— **v0.7.3 落地**：`src/electron/crash-log.ts` 双 handler 落盘 `crash.log`（uncaughtException 记录后照原语义退出；unhandledRejection 记录后存活），10 项单测覆盖
 - [ ] README 更新为"产品视角"（截图 + 下载链接），开发视角内容挪 CONTRIBUTING —— **现状**：README 经多轮更新（kb/市场/压缩）但仍以开发者视角为主，产品视角改版未做
 
 > ⛔ **决策门 1**：若发布后 2 周、10 个外部用户目标落空 → 不许继续造平台，回头做场景与产品力（换杀手场景/换目标人群），直到过门。
