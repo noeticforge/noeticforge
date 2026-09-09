@@ -1,0 +1,10 @@
+{
+  "name": "doc-tools",
+  "version": "0.1.0",
+  "displayName": "文档解析",
+  "description": "把 .docx/.xlsx/.pptx/.pdf/.rtf 等办公文档提取为纯文本供模型阅读分析(零依赖提取器,无法解析的格式如实提示)",
+  "author": "noeticforge",
+  "permissions": ["fs:read"],
+  "entry": "index.js",
+  "protocolVersion": 1
+}

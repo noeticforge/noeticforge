@@ -2,6 +2,22 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。所有对外行为变化（IPC 通道、事件 payload、插件协议、错误码）都必须记录在此。
 
+## [0.7.5] - 2026-09-09（doc-tools 文档解析插件 + 二进制附件/注入诚实化，ZCode 协作）
+
+### 新增内置插件 doc-tools（文档解析）
+- 用户诉求："复制 Word 文档到输入页"——粘贴/附件/@ 三条通道此前对 .docx/.pdf 一律 utf-8 硬读，结果必为乱码。
+- **`doc-tools.extract(path, maxChars?)`**：办公文档 → 纯文本提取，供模型阅读分析。
+  - 支持 `.docx`（段落/run 结构还原）/`.xlsx`（共享字符串+逐表逐行）/`.pptx`（逐 slide 段落）/`.pdf`（Flate 内容流 Tj/TJ 提取）/`.rtf`/纯文本族；
+  - **零新增依赖**：zip 解包复用底座既有依赖 adm-zip，PDF 解压走 `node:zlib`，符合"零冗余第三方依赖"插件纪律；
+  - 诚实边界：老式 `.doc` 拒收并提示转 docx；CID 嵌入字体的 PDF（高位 NUL/控制字节占比判别）如实返回"无法无损提取+替代方案"而不是吐乱码；>60MB 拒绝，>10 万字符截断；
+  - `fs:read` 单权限、`requiresApproval:false`（只读）、`parallelSafe:true`。
+- 新增 10 项单测（现场构造真 docx/xlsx/pptx/pdf/rtf 样本，含 CID 判别与全部拒收分支）。
+
+### 底座诚实化（不解析、但绝不喂乱码）
+- `readAttachment`：文本附件分支加 NUL 嗅探，二进制返回可行动错误（引导"发路径给模型用 doc-tools.extract"）；
+- `@ 引用注入`：docx/xlsx/pptx/pdf/rtf/doc 不再注入内容，改为向模型注入"请调用 doc-tools.extract 读取此路径"引导块；其余二进制静默跳过（兑现既有注释承诺）。
+- IPC 通道/错误码零新增（复用 E_INVALID_CONFIG），不触发契约先行流程。
+
 ## [0.7.4] - 2026-09-09（打包态内置插件修复 + 发布流水线单点发布如实落地，ZCode 协作）
 
 ### 打包态严重缺陷：内置插件全丢（实测复现并修复）

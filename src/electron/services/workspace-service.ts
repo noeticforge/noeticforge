@@ -9,6 +9,9 @@ import type { SessionCompaction } from '../../core/session-store.js';
 import { SYSTEM_PROMPT, err, truncateText } from '../types.js';
 import type { IpcResult } from '../types.js';
 
+/** 二进制办公文档扩展名:注入/附件通道一律拒读并引导走 doc-tools.extract 工具 */
+const DOC_EXTS = ['.docx', '.xlsx', '.pptx', '.pdf', '.rtf', '.doc'];
+
 /**
  * Workspace file access, attachment parsing, context compression and
  * layered system prompt assembly.
@@ -31,7 +34,14 @@ export class WorkspaceService {
         if (!existsSync(abs)) continue;
         const st = statSync(abs);
         if (!st.isFile() || st.size > 500_000) continue;
+        const ext = path.extname(abs).toLowerCase();
+        // 二进制办公文档:不注入乱码,改为引导模型走 doc-tools.extract 工具读取
+        if (DOC_EXTS.includes(ext)) {
+          blocks.push(`--- ${rel} ---\n(该文件为二进制办公文档 ${ext},内容未注入。请调用 doc-tools.extract 工具读取此绝对路径后继续任务。)`);
+          continue;
+        }
         const text = readFileSync(abs, 'utf-8').slice(0, 20_000);
+        if (text.includes('\u0000')) continue; // 真二进制静默跳过(与既有注释一致)
         blocks.push(`--- ${rel} ---\n${text}`);
       } catch {
         // Binary or unreadable files are skipped silently.
@@ -110,8 +120,11 @@ export class WorkspaceService {
         return { ok: true, data: { name, kind: 'image', mediaType: imageTypes[ext], data } };
       }
       if (st.size > 400_000) return err('E_INVALID_CONFIG', '文本附件超过 400KB 上限', 'unknown');
-      const text = readFileSync(file, 'utf-8');
-      return { ok: true, data: { name, kind: 'text', mediaType: 'text/plain', text } };
+      const buf = readFileSync(file);
+      if (buf.subarray(0, 8000).includes(0)) {
+        return err('E_INVALID_CONFIG', `二进制文件不能直接作为附件。请发送文件路径让模型调用 doc-tools.extract 读取(.docx/.xlsx/.pptx/.pdf/.rtf 支持,.doc 请先转存 docx)`, 'unknown');
+      }
+      return { ok: true, data: { name, kind: 'text', mediaType: 'text/plain', text: buf.toString('utf-8') } };
     } catch (e) {
       return err('E_INTERNAL', `读取附件失败: ${e instanceof Error ? e.message : String(e)}`, 'unknown');
     }

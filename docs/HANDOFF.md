@@ -6,23 +6,23 @@
 > **🤖 AI 代理进场第一读**：任何 AI 编码代理接入本项目，**先完整读本文件再动代码**——
 > §〇 是最近一次交付快照，§四 铁律与 §五 已知边界是硬约束；读完按 §二 跑一遍防线验证环境。（规则同样写入根目录 `AGENTS.md` §0）
 
-## 〇、最新一轮交付快照（v0.7.4，2026-09-09，ZCode 协作）
+## 〇、最新一轮交付快照（v0.7.5，2026-09-09，ZCode 协作）
 
-**主线：打包态内置插件全丢(实打包+CDP 实测复现,修复后 7/7)+ release.yml 如实落地 v0.7.1 声明的单点发布**:
+**主线：doc-tools 文档解析插件 + 二进制附件/注入诚实化**（解决"Word/PDF 进不了对话"——三条通道全部乱码）：
 
-- 插件扫描根抽纯函数 `resolvePluginScanRoots`,接入 `builtinPluginsDir()`(app.asar 内置目录),此前发布版仅 1 个工具插件;
-- 发布流水线改矩阵 `--publish never` + upload-artifact → 单一 publish job(softprops,非草稿、make_latest、fail_on_unmatched_files),
-  并接入 `release-notes.mjs` 生成 Release 正文;发布门禁补跑 ipc/codes。
+- 新内置插件 `plugins/builtin/doc-tools`（两文件规范）：`doc-tools.extract` 提取 .docx/.xlsx/.pptx/.pdf/.rtf/纯文本族为文本，
+  零新增依赖（adm-zip + node:zlib）；无法还原的（老 .doc、CID 嵌入字体 PDF）明确拒收给替代方案，绝不吐乱码；
+- 底座 `workspace-service`：readAttachment NUL 嗅探拒收二进制并给出可行动错误；@ 注入对办公文档改为
+  注入"请调用 doc-tools.extract"引导块。IPC 通道/错误码零新增。+10 项单测（现场构造真样本）。
 
-**前一轮（v0.7.3）**：主进程崩溃日志落盘（了结 DEVELOPMENT_PLAN §3.6-3）——
+**上一轮（v0.7.4）**：打包态内置插件全丢修复（扫描根接 app.asar builtin，实测 1→7）+ release.yml 如实落地
+v0.7.1 声明的单点发布（矩阵 --publish never + 单 publish job + release-notes 接入 + 发布门禁补 ipc/codes）。
 
-- 新模块 `src/electron/crash-log.ts`：`uncaughtException` 记录后按原语义退出（与无 handler 时的崩溃行为一致，只是留下证据）、
-  `unhandledRejection` 记录后存活；报告（ISO 时间戳 + 应用/Node 版本 + 平台架构 + 堆栈）追加至数据目录 `crash.log`；
-  超 512KB 自动截断；写盘失败静默（兜底路径禁止二次异常）。模块零 electron 依赖，`main.ts` 在数据目录解析后第一时间安装。
-- IPC 协议 / 错误码零改动，不触发契约先行流程；新增 10 项 vitest 单测。
+**前轮（v0.7.3）**：主进程崩溃日志落盘 `src/electron/crash-log.ts`（uncaughtException 记录后按原语义退出、
+unhandledRejection 记录后存活；512KB 截断；写盘失败静默；+10 项单测）。
 
-**本轮验证**：五条防线本地全绿（build / smoke 24 / unit **143** / ipc **94 断言·72 通道** / codes / window 7 项）；
-实打包 `electron-builder -w --dir` + CDP 探针验证打包态插件加载 1→7；journeys E2E 本轮未重跑。
+**本轮验证**：五条防线本地全绿（build / smoke 24 / unit **153** / ipc **94 断言·72 通道** / codes / window 7 项）；
+打包安装版实测（`electron-builder -w` + CDP 探针）见 v0.7.4 记录。
 
 **此前两轮（v0.7.0–v0.7.2 + Ultra 旗舰版，2026-09-08，Ljj041120 / 何惜，明细见 CHANGELOG）**：
 插件协议 parallelSafe / 设置页 / 子代理角色 → 发布流水线竞态修复 + RELEASE_NOTES 自动生成 + 私有仓库 404 可行动提示 →
@@ -69,7 +69,7 @@ npm run serve:vtx                    # 启动 http://127.0.0.1:8000/v1/embedding
 | 命令 | 测什么 | 需要 |
 |---|---|---|
 | `npm run smoke` | 循环引擎 + providers 多模态转换 + 严格网关兼容 + 终端后端 | 无（离线） |
-| `npm run test:unit` | vitest 单元测试 143 项（上下文裁剪/增量摘要压缩/Schema/注册表/会话存储/Provider 流解析/知识库 kb/崩溃兜底/插件扫描根） | 无（离线） |
+| `npm run test:unit` | vitest 单元测试 153 项（上下文裁剪/增量摘要压缩/Schema/注册表/会话存储/Provider 流解析/知识库 kb/崩溃兜底/插件扫描根/文档提取 doc-tools） | 无（离线） |
 | `npm run test:ipc` | IPC 协议 94 项断言（含权限模式/排队/压缩复用与前缀稳定/子代理/MCP/通道接线完整性） | 无（离线） |
 | `npm run test:window` | 窗口控制（最小化/最大化/关闭/状态推送） | 桌面环境（**CI 不跑此防线**，必须本地验证） |
 | `npm run check:codes` | 错误码三方一致（事实源=协议文档=UI 文案） | 无（离线） |
