@@ -48,7 +48,7 @@ export class OpenAICompatibleProvider implements LLMProvider {
 
     // 只重试「拿到响应」这一步；SSE 开始吐字之后重试会把同一段内容重复推给 UI
     const res = await withRetry(async () => {
-      const r = await fetch(`${this.opts.baseUrl}/chat/completions`, {
+      let r = await fetch(`${this.opts.baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -58,6 +58,26 @@ export class OpenAICompatibleProvider implements LLMProvider {
         body: JSON.stringify(body),
         signal: chatOptions?.signal,
       });
+      // 容错降级：当且仅当上游明确指责 reasoning 档位不支持时（例如特定代理报错 level "high" not supported），
+      // 自动剔除该参数并降级重试，保障模型对话顺畅；对于通用 unknown field 拒绝仍按严格规范抛出异常
+      if (r.status === 400 && body.reasoning_effort) {
+        const errCloned = r.clone();
+        const errText = await errCloned.text().catch(() => '');
+        if (/level.*not supported|reasoning.*invalid/i.test(errText)) {
+          const fallbackBody = { ...body };
+          delete fallbackBody.reasoning_effort;
+          r = await fetch(`${this.opts.baseUrl}/chat/completions`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${this.opts.apiKey}`,
+              Connection: 'keep-alive',
+            },
+            body: JSON.stringify(fallbackBody),
+            signal: chatOptions?.signal,
+          });
+        }
+      }
       if (!r.ok) {
         const text = await r.text().catch(() => '');
         throw new LLMHttpError(`[${this.id}] API 请求失败 ${r.status}: ${text.slice(0, 500)}`, r.status);

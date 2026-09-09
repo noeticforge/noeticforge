@@ -4,9 +4,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>agent-base</title>
+<script>
+  try {
+    const t = localStorage.getItem('ab-theme') || 'theme-light';
+    document.body ? document.body.className = t : (document.documentElement.className = t);
+  } catch {}
+</script>
 <link rel="stylesheet" href="style.css">
 </head>
-<body class="theme-light">
+<body>
 <div id="toast-box" aria-live="polite"></div>
 
 <!-- 玻璃壳体：无边框透明窗口里的一整块玻璃 -->
